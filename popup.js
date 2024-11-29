@@ -1,7 +1,8 @@
 document.addEventListener('DOMContentLoaded', function () {
     const startListeningButton = document.getElementById('start-listening');
-    const resultBox = document.getElementById('result-box');  // Ensure this ID matches the HTML
+    const resultBox = document.getElementById('result-box'); // Ensure this ID matches the HTML
 
+    // Check if the button exists before adding event listener
     if (startListeningButton) {
         startListeningButton.addEventListener('click', function () {
             // Check if the browser supports getUserMedia for microphone access
@@ -21,6 +22,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 showMicrophoneInstructions();
             }
         });
+    } else {
+        console.error("Start Listening button not found!");
     }
 
     // Function to start speech recognition
