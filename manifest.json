@@ -1,15 +1,8 @@
 {
     "manifest_version": 2,
-    "name": "Voice-Activated Email",
-    "description": "Control your email client with voice commands.",
+    "name": "Voice-Activated Email System",
     "version": "1.0",
-    "permissions": [
-      "activeTab",
-      "storage",
-      "identity",
-      "https://mail.google.com/*",
-      "https://outlook.live.com/*"
-    ],
+    "description": "A voice-activated system for email management.",
     "browser_action": {
       "default_popup": "popup.html",
       "default_icon": {
@@ -18,23 +11,20 @@
         "128": "icons/icon128.png"
       }
     },
+    "permissions": [
+      "activeTab",
+      "storage"
+    ],
     "background": {
       "scripts": ["background.js"],
       "persistent": false
     },
     "content_scripts": [
       {
-        "matches": ["https://mail.google.com/*", "https://outlook.live.com/*"],
+        "matches": ["*://mail.google.com/*", "*://*.outlook.com/*"],
         "js": ["content.js"]
       }
     ],
-    "commands": {
-      "start_voice_command": {
-        "suggested_key": {
-          "default": "Ctrl+Shift+V"
-        },
-        "description": "Start voice command"
-      }
-    }
+    "options_page": "options.html"
   }
   
