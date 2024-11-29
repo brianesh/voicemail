@@ -4,8 +4,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (startListeningButton) {
         startListeningButton.addEventListener('click', function () {
-            // Check if browser supports getUserMedia for microphone access
+            // Check if the browser supports getUserMedia for microphone access
             if (navigator.mediaDevices) {
+                // Request microphone access
                 navigator.mediaDevices.getUserMedia({ audio: true })
                     .then(function (stream) {
                         // Start speech recognition once microphone access is granted
@@ -25,6 +26,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Function to start speech recognition
     function startSpeechRecognition() {
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        
         recognition.onstart = function () {
             console.log("Speech recognition started.");
         };
@@ -36,9 +38,16 @@ document.addEventListener('DOMContentLoaded', function () {
         };
 
         recognition.onerror = function (event) {
+            // Handle different error types
             if (event.error === "not-allowed") {
                 console.log("Speech recognition error: not-allowed");
                 showMicrophoneInstructions();
+            } else if (event.error === "network") {
+                console.log("Speech recognition error: network");
+                resultBox.textContent = "Network error occurred, please check your connection.";
+            } else if (event.error === "no-speech") {
+                console.log("Speech recognition error: no-speech");
+                resultBox.textContent = "No speech detected.";
             } else {
                 console.error("Speech recognition error: " + event.error);
             }
