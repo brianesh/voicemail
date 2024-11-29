@@ -1,74 +1,88 @@
-// Declare the voice recognition state globally
-let isVoiceEnabled = false;
+document.addEventListener("DOMContentLoaded", function() {
+  // Default settings
+  const defaultValues = {
+      language: 'en-US', // Default language (English - US)
+      rate: 1,           // Default rate (1x speed)
+      pitch: 1           // Default pitch (neutral)
+  };
 
-// Ensure the DOM is fully loaded before executing the script
-document.addEventListener('DOMContentLoaded', function () {
-    const voiceToggleBtn = document.getElementById('voiceToggleBtn');
-    
-    // Check if the button exists in the DOM
-    if (voiceToggleBtn) {
-        // Add event listener for click event
-        voiceToggleBtn.addEventListener('click', function () {
-            console.log('Voice toggle button clicked');
-            toggleVoiceRecognition();  // Call the function to toggle voice recognition
-        });
-    } else {
-        console.error('Voice toggle button not found in the DOM');
-    }
+  // Initialize saved settings or use default values
+  const savedLanguage = localStorage.getItem('voice-language') || defaultValues.language;
+  const savedRate = localStorage.getItem('voice-rate') || defaultValues.rate;
+  const savedPitch = localStorage.getItem('voice-pitch') || defaultValues.pitch;
+
+  // Update the displayed settings on the page
+  document.getElementById('current-language').textContent = savedLanguage === 'en-US' ? 'English (US)' : savedLanguage;
+  document.getElementById('current-rate').textContent = savedRate;
+  document.getElementById('current-pitch').textContent = savedPitch;
+
+  // Check for SpeechRecognition support
+  if ('webkitSpeechRecognition' in window) {
+      // Initialize speech recognition
+      const recognition = new webkitSpeechRecognition();
+      recognition.continuous = true; // Keep recognizing until stopped
+      recognition.interimResults = true; // Allow interim results
+      recognition.lang = savedLanguage; // Set language from saved settings
+
+      // Event listeners
+      recognition.onstart = function() {
+          document.getElementById('status-text').textContent = "Voice recognition is on.";
+      };
+      
+      recognition.onend = function() {
+          document.getElementById('status-text').textContent = "Voice recognition is off.";
+      };
+
+      recognition.onerror = function(event) {
+          // Handle specific errors
+          if (event.error === 'not-allowed') {
+              document.getElementById('status-text').textContent = "Microphone access denied. Please allow microphone permissions.";
+          } else {
+              document.getElementById('status-text').textContent = `Error: ${event.error}`;
+          }
+          console.log(`Speech Recognition Error: ${event.error}`); // Log error for debugging
+      };
+
+      recognition.onresult = function(event) {
+          const transcript = event.results[event.resultIndex][0].transcript;
+          console.log("Recognized text: ", transcript); // Log the recognized text for debugging
+      };
+
+      // Track recognition state
+      let isRecognitionActive = false;
+
+      // Toggle recognition on/off
+      document.getElementById('voiceToggleBtn').addEventListener('click', function() {
+          if (isRecognitionActive) {
+              recognition.stop();
+              isRecognitionActive = false;
+              console.log("Recognition stopped.");
+          } else {
+              recognition.start();
+              isRecognitionActive = true;
+              console.log("Recognition started.");
+          }
+      });
+  } else {
+      alert('Your browser does not support Speech Recognition!');
+      console.log("Speech Recognition API not supported.");
+  }
+
+  // Function to update language, rate, and pitch settings dynamically
+  const updateSettings = () => {
+      document.getElementById('current-language').textContent = savedLanguage === 'en-US' ? 'English (US)' : savedLanguage;
+      document.getElementById('current-rate').textContent = savedRate;
+      document.getElementById('current-pitch').textContent = savedPitch;
+  };
+
+  // Save language, rate, and pitch settings in localStorage
+  const saveSettings = () => {
+      localStorage.setItem('voice-language', savedLanguage);
+      localStorage.setItem('voice-rate', savedRate);
+      localStorage.setItem('voice-pitch', savedPitch);
+  };
+
+  // Call the functions to set initial settings and save them
+  updateSettings();
+  saveSettings();
 });
-
-// Function to handle the logic of enabling/disabling voice recognition
-function toggleVoiceRecognition() {
-    if (isVoiceEnabled) {
-        console.log('Voice recognition stopped');
-        isVoiceEnabled = false;
-        stopSpeechRecognition();  // Stop voice recognition
-    } else {
-        console.log('Voice recognition started');
-        isVoiceEnabled = true;
-        startSpeechRecognition();  // Start voice recognition
-    }
-}
-
-// Function to start speech recognition
-function startSpeechRecognition() {
-    // Check if SpeechRecognition API is available in the browser
-    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
-        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.lang = 'en-US';  // Set the language to English
-        recognition.continuous = true;  // Keep listening to the user
-
-        recognition.onstart = function () {
-            console.log('Speech recognition started');
-        };
-
-        recognition.onresult = function (event) {
-            const transcript = event.results[event.results.length - 1][0].transcript;
-            console.log('You said: ', transcript);
-            // Add logic here to handle the result (e.g., send email)
-        };
-
-        recognition.onerror = function (event) {
-            console.error('Speech recognition error: ', event.error);
-        };
-
-        recognition.onend = function () {
-            console.log('Speech recognition ended');
-            if (isVoiceEnabled) {
-                recognition.start();  // Restart if voice recognition is still enabled
-            }
-        };
-
-        // Start listening
-        recognition.start();
-    } else {
-        console.error('Speech recognition is not supported in this browser.');
-    }
-}
-
-// Function to stop speech recognition (placeholder logic for now)
-function stopSpeechRecognition() {
-    console.log('Stopping voice recognition...');
-    // Implement logic to stop the recognition if it's running
-    // Note: In real-world cases, you would need to keep track of the recognition instance
-}

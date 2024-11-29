@@ -1,53 +1,39 @@
-// Get elements from options.html
-const languageSelect = document.getElementById('voice-language');
-const rateSlider = document.getElementById('voice-rate');
-const pitchSlider = document.getElementById('voice-pitch');
-const rateValue = document.getElementById('rate-value');
-const pitchValue = document.getElementById('pitch-value');
-const settingsForm = document.getElementById('settings-form');
+document.addEventListener('DOMContentLoaded', function() {
+    // Load saved settings
+    chrome.storage.sync.get(['voiceLanguage', 'voiceRate', 'voicePitch'], function(data) {
+        document.getElementById('voice-language').value = data.voiceLanguage || 'en';
+        document.getElementById('voice-rate').value = data.voiceRate || 1;
+        document.getElementById('voice-pitch').value = data.voicePitch || 1;
 
-// Load the saved settings from chrome.storage
-chrome.storage.sync.get(['language', 'rate', 'pitch'], (settings) => {
-    // Set default values if nothing is saved yet
-    const language = settings.language || 'en-US';
-    const rate = settings.rate || 1;
-    const pitch = settings.pitch || 1;
+        // Update display of range values
+        document.getElementById('rate-value').textContent = data.voiceRate || 1;
+        document.getElementById('pitch-value').textContent = data.voicePitch || 1;
+    });
 
-    // Set values to the corresponding form elements
-    languageSelect.value = language;
-    rateSlider.value = rate;
-    pitchSlider.value = pitch;
+    // Event listener to update the range values
+    document.getElementById('voice-rate').addEventListener('input', function() {
+        document.getElementById('rate-value').textContent = this.value;
+    });
 
-    // Display rate and pitch values
-    rateValue.textContent = rate;
-    pitchValue.textContent = pitch;
-});
+    document.getElementById('voice-pitch').addEventListener('input', function() {
+        document.getElementById('pitch-value').textContent = this.value;
+    });
 
-// Event listener for changes in the rate slider
-rateSlider.addEventListener('input', () => {
-    rateValue.textContent = rateSlider.value;
-});
+    // Save settings when form is submitted
+    document.getElementById('settings-form').addEventListener('submit', function(event) {
+        event.preventDefault();
 
-// Event listener for changes in the pitch slider
-pitchSlider.addEventListener('input', () => {
-    pitchValue.textContent = pitchSlider.value;
-});
+        const language = document.getElementById('voice-language').value;
+        const rate = document.getElementById('voice-rate').value;
+        const pitch = document.getElementById('voice-pitch').value;
 
-// Event listener for the settings form submission
-settingsForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-
-    // Get the updated values from the form elements
-    const updatedLanguage = languageSelect.value;
-    const updatedRate = rateSlider.value;
-    const updatedPitch = pitchSlider.value;
-
-    // Save the updated settings to chrome.storage
-    chrome.storage.sync.set({
-        language: updatedLanguage,
-        rate: updatedRate,
-        pitch: updatedPitch
-    }, () => {
-        alert('Settings saved!');
+        // Save settings to Chrome storage or localStorage
+        chrome.storage.sync.set({
+            voiceLanguage: language,
+            voiceRate: rate,
+            voicePitch: pitch
+        }, function() {
+            alert('Settings saved!');
+        });
     });
 });

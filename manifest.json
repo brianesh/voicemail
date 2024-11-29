@@ -27,11 +27,7 @@
   "options_page": "options.html",
   "content_scripts": [
       {
-          "matches": [
-              "*://mail.google.com/*",
-              "*://outlook.live.com/*",
-              "*://mail.yahoo.com/*"
-          ],
+          "matches": ["*://mail.google.com/*", "*://outlook.live.com/*", "*://mail.yahoo.com/*"], 
           "js": ["content.js"]
       }
   ],
