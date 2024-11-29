@@ -1,16 +1,20 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice-Activated Email</title>
-    <link rel="stylesheet" href="style.css">
-  </head>
-  <body>
-    <h1>Voice-Activated Email</h1>
-    <button id="start-listening">Start Listening</button>
-    <div id="result-box"></div>
-    <a href="options.html" target="_blank">Open Settings</a>
-    <script src="popup.js"></script>
-  </body>
-</html>
+{
+  "manifest_version": 3,
+  "name": "Voice Activated Email",
+  "version": "1.0",
+  "description": "A voice-activated email system.",
+  "permissions": ["storage"],
+  "host_permissions": ["http://localhost/*", "https://*/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html"
+}

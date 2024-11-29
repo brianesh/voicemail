@@ -1,34 +1,26 @@
-/* style.css */
 body {
-    font-family: Arial, sans-serif;
-    padding: 10px;
-  }
-  
-  h1 {
-    font-size: 20px;
-    margin-bottom: 10px;
-  }
-  
-  button {
-    padding: 10px;
-    font-size: 16px;
-    cursor: pointer;
-    width: 100%;
-    background-color: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 5px;
-  }
-  
-  button:disabled {
-    background-color: #ccc;
-  }
-  
-  #result-box {
-    margin-top: 20px;
-    padding: 10px;
-    border: 1px solid #ccc;
-    min-height: 40px;
-    font-size: 16px;
-  }
-  
+  font-family: Arial, sans-serif;
+  margin: 20px;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+button {
+  background-color: #4CAF50;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #45a049;
+}
+
+#result-box {
+  margin-top: 20px;
+  padding: 10px;
+  border: 1px solid #ddd;
+}
