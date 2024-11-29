@@ -31,7 +31,9 @@ startButton.addEventListener("click", function () {
   // Attempt to request microphone permission
   navigator.mediaDevices.getUserMedia({ audio: true })
     .then(function (stream) {
-      recognition.start(); // Start the speech recognition process
+      // Only start recognition if microphone access is granted
+      recognition.start();  // Start the speech recognition process
+      console.log("Speech recognition started.");
     })
     .catch(function (error) {
       console.error("Microphone access denied: ", error);
