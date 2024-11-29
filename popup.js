@@ -1,5 +1,3 @@
-// popup.js
-
 // Wait for the DOM to fully load before adding event listeners
 document.addEventListener('DOMContentLoaded', () => {
   // Select the button by its ID
@@ -18,28 +16,30 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// Ensure window.isVoiceEnabled is defined (initialize if not)
+if (typeof window.isVoiceEnabled === 'undefined') {
+  window.isVoiceEnabled = false; // Initialize as false
+}
+
 // Function to handle the logic of enabling/disabling voice recognition
 function toggleVoiceRecognition() {
-  // Example logic to toggle voice recognition (you can replace this with actual functionality)
-  console.log('Voice recognition toggled');
-
   // Check if voice recognition is enabled or not
   if (window.isVoiceEnabled) {
-      // Stop voice recognition (you'll need to implement this in your speech recognition logic)
+      // Stop voice recognition (implement stop logic)
       console.log('Voice recognition stopped');
       window.isVoiceEnabled = false;
+      stopSpeechRecognition();  // Call function to stop voice recognition
   } else {
-      // Start voice recognition (implement your logic here)
+      // Start voice recognition (implement start logic)
       console.log('Voice recognition started');
       window.isVoiceEnabled = true;
-
-      // Example of using the SpeechRecognition API to start voice recognition
-      startSpeechRecognition();
+      startSpeechRecognition();  // Call function to start voice recognition
   }
 }
 
 // Placeholder function to start speech recognition (replace with actual implementation)
 function startSpeechRecognition() {
+  // Check if SpeechRecognition API is available
   if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
       const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
       recognition.lang = 'en-US'; // Set the language
@@ -71,4 +71,11 @@ function startSpeechRecognition() {
   } else {
       console.log('Speech recognition is not supported in this browser.');
   }
+}
+
+// Function to stop speech recognition (add your logic here)
+function stopSpeechRecognition() {
+  // Logic to stop the speech recognition if running
+  console.log('Stopping voice recognition...');
+  // You would typically need to track the recognition instance globally
 }
