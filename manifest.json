@@ -1,20 +1,43 @@
 {
   "manifest_version": 3,
-  "name": "Voice Activated Email",
+  "name": "Voice-Activated Email Extension",
+  "description": "A voice-activated email extension for the visually impaired.",
   "version": "1.0",
-  "description": "A voice-activated email system.",
-  "permissions": ["storage"],
-  "host_permissions": ["http://localhost/*", "https://*/*"],
-  "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
+  "icons": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
-    }
   },
+  "permissions": [
+      "activeTab",
+      "storage",
+      "identity",
+      "microphone"
+  ],
   "background": {
-    "service_worker": "background.js"
+      "service_worker": "background.js"
   },
-  "options_page": "options.html"
+  "action": {
+      "default_popup": "popup.html",
+      "default_icon": {
+          "16": "icons/icon16.png",
+          "48": "icons/icon48.png",
+          "128": "icons/icon128.png"
+      }
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+      {
+          "matches": [
+              "*://mail.google.com/*", 
+              "*://outlook.live.com/*", 
+              "*://mail.yahoo.com/*"
+          ], 
+          "js": ["content.js"]
+      }
+  ],
+  "host_permissions": [
+      "http://*/*",
+      "https://*/*"
+  ]
 }
