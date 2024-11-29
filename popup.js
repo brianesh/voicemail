@@ -32,7 +32,6 @@ function startRecognition(stream) {
       const transcript = event.results[0][0].transcript;
       document.getElementById('result-box').innerText = transcript;  // Show the transcript in the result box
   };
-
   recognition.onerror = function(event) {
       // Handle errors
       console.error("Speech recognition error: ", event.error);
