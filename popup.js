@@ -1,41 +1,41 @@
 // popup.js
 
-// Check if the SpeechRecognition API is available
 const startButton = document.getElementById("start-listening");
 const resultBox = document.getElementById("result-box");
 const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
 
 // Configure recognition settings
-recognition.continuous = false;  // Stops automatically after speech
-recognition.interimResults = false;  // Only returns final results
+recognition.continuous = false;
+recognition.interimResults = false;
 
 // Start listening when the button is clicked
 startButton.addEventListener('click', function () {
-  recognition.start();  // Start speech recognition
-  startButton.disabled = true;  // Disable the button until recognition ends
-  startButton.textContent = "Listening...";  // Change button text to indicate listening
+  try {
+    recognition.start();
+    startButton.disabled = true;
+    startButton.textContent = "Listening...";
+  } catch (error) {
+    resultBox.textContent = "Error: " + error.message;
+    console.error("Error during recognition:", error);
+  }
 });
 
-// When speech is recognized, process it
+// Handle the result of speech recognition
 recognition.onresult = function (event) {
-  const speechToText = event.results[0][0].transcript;  // Get the text from speech
-  resultBox.textContent = `You said: ${speechToText}`;  // Display the recognized text
-  
-  // If you want to trigger email-related actions, you can check for specific phrases
-  if (speechToText.toLowerCase().includes("send email")) {
-    // Trigger email sending function or open the email client
-    console.log("User wants to send an email");
+  const speechToText = event.results[0][0].transcript;
+  resultBox.textContent = `You said: ${speechToText}`;
+};
+
+recognition.onerror = function (event) {
+  // Handle specific error cases, like permission denial
+  if (event.error === "not-allowed") {
+    resultBox.textContent = "Permission denied: Please allow microphone access.";
+  } else {
+    resultBox.textContent = `Error: ${event.error}`;
   }
 };
 
-// Handle errors
-recognition.onerror = function (event) {
-  console.error("Speech recognition error", event.error);
-  resultBox.textContent = "Error: " + event.error;  // Display the error message
-};
-
-// When recognition ends, re-enable the button and update the text
 recognition.onend = function () {
-  startButton.disabled = false;  // Re-enable the button
-  startButton.textContent = "Start Listening";  // Change button text back to normal
+  startButton.disabled = false;
+  startButton.textContent = "Start Listening";
 };
