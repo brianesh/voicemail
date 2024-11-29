@@ -1,54 +1,50 @@
-const startButton = document.getElementById("start-listening");
-const resultBox = document.getElementById("result-box");
-
-// Check if the browser supports speech recognition
-if (!('webkitSpeechRecognition' in window)) {
-  alert("Speech recognition not supported by this browser.");
-}
-
-const recognition = new webkitSpeechRecognition(); // Initialize speech recognition
-
-// Speech recognition settings
-recognition.continuous = true;  // Keep listening until manually stopped
-recognition.interimResults = true;  // Show partial results
-
-// Event listener for when speech is recognized
-recognition.onresult = function (event) {
-  const transcript = event.results[0][0].transcript;
-  resultBox.textContent = `You said: ${transcript}`;
-};
-
-// Event listener for errors
-recognition.onerror = function (event) {
-  if (event.error === 'not-allowed') {
-    console.error("Microphone access denied: ", event);
-    showMicrophoneInstructions();
-  } else {
-    console.error("Speech recognition error: ", event);
+document.getElementById('start-listening').addEventListener('click', function () {
+  // Check if the page is served over HTTPS
+  if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+      alert('Microphone access requires the page to be served over HTTPS or from localhost.');
+      return;
   }
-};
 
-// Start listening when the button is clicked
-startButton.addEventListener("click", function () {
-  // Attempt to request microphone permission
+  // Request microphone access
   navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(function (stream) {
-      // Microphone access granted, start recognition
-      recognition.start();  // Start the speech recognition process
-      console.log("Speech recognition started.");
-    })
-    .catch(function (error) {
-      console.error("Microphone access denied: ", error);
-      if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
-        showMicrophoneInstructions();  // Show instructions if permission is denied
-      } else {
-        resultBox.textContent = "An unexpected error occurred. Please try again.";
-      }
-    });
+      .then(function (stream) {
+          // Microphone access granted, proceed to speech recognition
+          startRecognition(stream);
+      })
+      .catch(function (error) {
+          // If access is denied or any error occurs
+          console.error("Microphone access denied: ", error);
+          showMicrophoneInstructions();
+      });
 });
 
-// Show instruction if microphone is not enabled
+function startRecognition(stream) {
+  // Initialize Speech Recognition (use appropriate API based on browser support)
+  const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+  recognition.lang = 'en-US';  // You can set the language as needed
+  recognition.continuous = true;  // Allow continuous speech recognition
+  recognition.interimResults = true;  // Show intermediate results as speech is detected
+  
+  recognition.start();  // Start listening
+
+  recognition.onresult = function(event) {
+      // This will be triggered when the speech is recognized
+      const transcript = event.results[0][0].transcript;
+      document.getElementById('result-box').innerText = transcript;  // Show the transcript in the result box
+  };
+
+  recognition.onerror = function(event) {
+      // Handle errors
+      console.error("Speech recognition error: ", event.error);
+  };
+
+  recognition.onend = function() {
+      // Speech recognition ended, reset or restart if needed
+      console.log("Speech recognition has ended.");
+  };
+}
+
 function showMicrophoneInstructions() {
-  resultBox.textContent = "To use voice commands, please allow microphone access in your browser settings.";
-  alert("Please allow microphone access in your browser settings to start using voice commands.");
+  // Show a message prompting the user to enable microphone access
+  alert('Please enable microphone access in your browser settings.');
 }
