@@ -1,67 +1,44 @@
-document.addEventListener('DOMContentLoaded', function () {
-    const startListeningButton = document.getElementById('start-listening');
-    const resultBox = document.getElementById('result-box'); // Ensure this ID matches the HTML
+const startButton = document.getElementById("start-listening");
+const resultBox = document.getElementById("result-box");
 
-    // Check if the button exists before adding event listener
-    if (startListeningButton) {
-        startListeningButton.addEventListener('click', function () {
-            // Check if the browser supports getUserMedia for microphone access
-            if (navigator.mediaDevices) {
-                // Request microphone access
-                navigator.mediaDevices.getUserMedia({ audio: true })
-                    .then(function (stream) {
-                        // Start speech recognition once microphone access is granted
-                        startSpeechRecognition();
-                    })
-                    .catch(function (error) {
-                        console.error("Microphone access denied: ", error);
-                        showMicrophoneInstructions();
-                    });
-            } else {
-                console.error("Browser does not support media devices.");
-                showMicrophoneInstructions();
-            }
-        });
-    } else {
-        console.error("Start Listening button not found!");
-    }
+// Check if the browser supports speech recognition
+if (!('webkitSpeechRecognition' in window)) {
+  alert("Speech recognition not supported by this browser.");
+}
 
-    // Function to start speech recognition
-    function startSpeechRecognition() {
-        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        
-        recognition.onstart = function () {
-            console.log("Speech recognition started.");
-        };
+const recognition = new webkitSpeechRecognition(); // Initialize speech recognition
 
-        recognition.onresult = function (event) {
-            const transcript = event.results[0][0].transcript;
-            resultBox.textContent = `Recognized Speech: ${transcript}`;
-            console.log("Recognized Speech: " + transcript);
-        };
+// Speech recognition settings
+recognition.continuous = true;  // Keep listening until manually stopped
+recognition.interimResults = true;  // Show partial results
 
-        recognition.onerror = function (event) {
-            // Handle different error types
-            if (event.error === "not-allowed") {
-                console.log("Speech recognition error: not-allowed");
-                showMicrophoneInstructions();
-            } else if (event.error === "network") {
-                console.log("Speech recognition error: network");
-                resultBox.textContent = "Network error occurred, please check your connection.";
-            } else if (event.error === "no-speech") {
-                console.log("Speech recognition error: no-speech");
-                resultBox.textContent = "No speech detected.";
-            } else {
-                console.error("Speech recognition error: " + event.error);
-            }
-        };
+// Event listener for when speech is recognized
+recognition.onresult = function (event) {
+  const transcript = event.results[0][0].transcript;
+  resultBox.textContent = `You said: ${transcript}`;
+};
 
-        recognition.start();
-    }
+// Event listener for errors
+recognition.onerror = function (event) {
+  if (event.error === 'not-allowed') {
+    showMicrophoneInstructions();  // Prompt user to enable microphone
+  }
+};
 
-    // Function to show instructions if microphone is not allowed
-    function showMicrophoneInstructions() {
-        resultBox.textContent = "To use voice commands, please allow microphone access in your browser settings.";
-        alert("To use voice commands, please allow microphone access in your browser settings.");
-    }
+// Start listening when the button is clicked
+startButton.addEventListener("click", function () {
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(function (stream) {
+      recognition.start(); // Start the speech recognition process
+    })
+    .catch(function (error) {
+      console.error("Microphone access denied: ", error);
+      showMicrophoneInstructions();
+    });
 });
+
+// Show instruction if microphone is not enabled
+function showMicrophoneInstructions() {
+  resultBox.textContent = "To use voice commands, please allow microphone access in your browser settings.";
+  alert("Please allow microphone access in your browser settings to start using voice commands.");
+}
