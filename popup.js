@@ -21,19 +21,25 @@ recognition.onresult = function (event) {
 // Event listener for errors
 recognition.onerror = function (event) {
   if (event.error === 'not-allowed') {
-    showMicrophoneInstructions();  // Prompt user to enable microphone
+    console.error("Microphone access denied: ", event);
+    showMicrophoneInstructions();
   }
 };
 
 // Start listening when the button is clicked
 startButton.addEventListener("click", function () {
+  // Attempt to request microphone permission
   navigator.mediaDevices.getUserMedia({ audio: true })
     .then(function (stream) {
       recognition.start(); // Start the speech recognition process
     })
     .catch(function (error) {
       console.error("Microphone access denied: ", error);
-      showMicrophoneInstructions();
+      if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+        showMicrophoneInstructions();  // Show instructions if permission is denied
+      } else {
+        resultBox.textContent = "An unexpected error occurred. Please try again.";
+      }
     });
 });
 
