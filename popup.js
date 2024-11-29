@@ -1,5 +1,5 @@
 document.getElementById('start-listening').addEventListener('click', function () {
-  // Check if the page is served over HTTPS
+  // Check if the page is served over HTTPS or localhost
   if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
       alert('Microphone access requires the page to be served over HTTPS or from localhost.');
       return;
@@ -9,7 +9,7 @@ document.getElementById('start-listening').addEventListener('click', function ()
   navigator.mediaDevices.getUserMedia({ audio: true })
       .then(function (stream) {
           // Microphone access granted, proceed to speech recognition
-          startRecognition(stream);
+          startRecognition();
       })
       .catch(function (error) {
           // If access is denied or any error occurs
@@ -18,10 +18,10 @@ document.getElementById('start-listening').addEventListener('click', function ()
       });
 });
 
-function startRecognition(stream) {
+function startRecognition() {
   // Check if SpeechRecognition is supported in the browser
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  
+
   if (!SpeechRecognition) {
       alert('Your browser does not support speech recognition.');
       return; // Exit if speech recognition is not supported
@@ -32,13 +32,23 @@ function startRecognition(stream) {
   recognition.lang = 'en-US';  // Set the language
   recognition.continuous = true;  // Allow continuous listening
   recognition.interimResults = true;  // Show interim results
-  
+
+  // Add event listener for when the recognition starts
+  recognition.onstart = function () {
+      console.log("Speech recognition started");
+  };
+
   // Start listening
-  recognition.start();
+  try {
+      recognition.start(); // Attempt to start speech recognition
+      console.log("Speech recognition has been started.");
+  } catch (error) {
+      console.error("Error starting speech recognition:", error);
+      showMicrophoneInstructions();
+  }
 
   // Handle speech recognition results
   recognition.onresult = function (event) {
-      // Get the transcript of the speech
       const transcript = event.results[0][0].transcript;
       console.log("Recognized Text:", transcript);  // For debugging, see what is recognized
 
@@ -49,6 +59,7 @@ function startRecognition(stream) {
   // Handle recognition errors
   recognition.onerror = function (event) {
       console.error("Speech recognition error: ", event.error);
+      showMicrophoneInstructions();
   };
 
   // Handle when recognition stops
