@@ -1,50 +1,54 @@
-const startListeningButton = document.getElementById("startListening");
+const startButton = document.getElementById("start-listening");
+const resultBox = document.getElementById("result-box");
 
-startListeningButton.addEventListener("click", function() {
-  if (navigator.mediaDevices) {
-    // First, attempt to get the microphone access
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(function(stream) {
-        console.log("Microphone access granted.");
+const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+recognition.continuous = false;
+recognition.interimResults = false;
 
-        // Start Speech Recognition if microphone access is granted
-        startSpeechRecognition();
-      })
-      .catch(function(error) {
-        console.error("Microphone access denied: " + error);
-        showMicrophoneInstructions();
-      });
-  } else {
-    console.error("Browser does not support media devices.");
-  }
+startButton.addEventListener('click', function () {
+  // Request permission to access the microphone
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(function (stream) {
+      // Permission granted, now start recognition
+      startRecognition();
+    })
+    .catch(function (error) {
+      // Permission denied, show instructions
+      resultBox.textContent = "Permission denied: Please allow microphone access.";
+      showMicrophoneInstructions();
+    });
 });
 
-// Function to start the speech recognition
-function startSpeechRecognition() {
-  const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-  recognition.onstart = function() {
-    console.log("Speech recognition started.");
-  };
-
-  recognition.onresult = function(event) {
-    const transcript = event.results[0][0].transcript;
-    console.log("Recognized Speech: " + transcript);
-  };
-
-  recognition.onerror = function(event) {
-    if (event.error === "not-allowed") {
-      console.log("Speech recognition error: not-allowed");
-      showMicrophoneInstructions();
-    } else {
-      console.error("Speech recognition error: " + event.error);
-    }
-  };
-
-  recognition.start();
+function startRecognition() {
+  try {
+    recognition.start();
+    startButton.disabled = true;
+    startButton.textContent = "Listening...";
+  } catch (error) {
+    resultBox.textContent = "Error starting recognition: " + error.message;
+    console.error("Error starting recognition:", error);
+  }
 }
 
-// Function to show instructions if microphone is not allowed
 function showMicrophoneInstructions() {
-  alert("To use voice commands, please allow microphone access in your browser settings.");
-  // Additional steps like opening settings or showing a manual could be added here
+  alert("Please enable microphone access in your browser settings.");
+  resultBox.textContent = "To use voice commands, please allow microphone access in your browser settings.";
 }
+
+recognition.onresult = function (event) {
+  const speechToText = event.results[0][0].transcript;
+  resultBox.textContent = `You said: ${speechToText}`;
+};
+
+recognition.onerror = function (event) {
+  if (event.error === "not-allowed") {
+    resultBox.textContent = "Permission denied: Please allow microphone access.";
+  } else {
+    resultBox.textContent = `Error: ${event.error}`;
+  }
+};
+
+recognition.onend = function () {
+  startButton.disabled = false;
+  startButton.textContent = "Start Listening";
+};
