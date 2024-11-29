@@ -19,26 +19,40 @@ document.getElementById('start-listening').addEventListener('click', function ()
 });
 
 function startRecognition(stream) {
-  // Initialize Speech Recognition (use appropriate API based on browser support)
-  const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-  recognition.lang = 'en-US';  // You can set the language as needed
-  recognition.continuous = true;  // Allow continuous speech recognition
-  recognition.interimResults = true;  // Show intermediate results as speech is detected
+  // Check if SpeechRecognition is supported in the browser
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   
-  recognition.start();  // Start listening
+  if (!SpeechRecognition) {
+      alert('Your browser does not support speech recognition.');
+      return; // Exit if speech recognition is not supported
+  }
 
-  recognition.onresult = function(event) {
-      // This will be triggered when the speech is recognized
+  // Initialize the SpeechRecognition object
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'en-US';  // Set the language
+  recognition.continuous = true;  // Allow continuous listening
+  recognition.interimResults = true;  // Show interim results
+  
+  // Start listening
+  recognition.start();
+
+  // Handle speech recognition results
+  recognition.onresult = function (event) {
+      // Get the transcript of the speech
       const transcript = event.results[0][0].transcript;
-      document.getElementById('result-box').innerText = transcript;  // Show the transcript in the result box
+      console.log("Recognized Text:", transcript);  // For debugging, see what is recognized
+
+      // Display the result in the result-box
+      document.getElementById('result-box').innerText = transcript;
   };
-  recognition.onerror = function(event) {
-      // Handle errors
+
+  // Handle recognition errors
+  recognition.onerror = function (event) {
       console.error("Speech recognition error: ", event.error);
   };
 
-  recognition.onend = function() {
-      // Speech recognition ended, reset or restart if needed
+  // Handle when recognition stops
+  recognition.onend = function () {
       console.log("Speech recognition has ended.");
   };
 }
