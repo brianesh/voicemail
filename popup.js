@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', function () {
     const startListeningButton = document.getElementById('start-listening');
-    const resultBox = document.getElementById('result-box');
+    const resultBox = document.getElementById('result-box');  // Ensure this ID matches the HTML
 
     if (startListeningButton) {
         startListeningButton.addEventListener('click', function () {
