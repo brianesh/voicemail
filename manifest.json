@@ -5,6 +5,7 @@
     "version": "1.0",
     "permissions": [
       "activeTab",
+      "microphone",
       "storage"
     ],
     "host_permissions": [
