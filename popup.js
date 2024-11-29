@@ -5,20 +5,22 @@ const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognit
 recognition.continuous = false;
 recognition.interimResults = false;
 
-startButton.addEventListener('click', function () {
-  // Request permission to access the microphone
-  navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(function (stream) {
-      // Permission granted, now start recognition
-      startRecognition();
-    })
-    .catch(function (error) {
-      // Permission denied, show instructions
-      resultBox.textContent = "Permission denied: Please allow microphone access.";
-      showMicrophoneInstructions();
-    });
-});
-
+// This listens to the button to start voice recognition
+startButton.addEventListener("click", function() {
+    // Ensure that microphone permissions are requested
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(function(stream) {
+        // Permissions granted, we can start speech recognition
+        recognition.start();
+        startButton.textContent = "Listening...";
+      })
+      .catch(function(err) {
+        // If microphone permission is denied, show an error message
+        alert("Please enable microphone access in your browser settings.");
+        resultBox.textContent = "Permission denied: Please allow microphone access.";
+      });
+  });
+  
 function startRecognition() {
   try {
     recognition.start();
