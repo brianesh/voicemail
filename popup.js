@@ -1,5 +1,4 @@
 // popup.js
-
 const startButton = document.getElementById("start-listening");
 const resultBox = document.getElementById("result-box");
 
@@ -8,11 +7,12 @@ recognition.continuous = false;
 recognition.interimResults = false;
 
 startButton.addEventListener('click', function () {
-  // Request permission to use the microphone if not granted
+  // Check microphone permission before starting recognition
   if (navigator.permissions) {
     navigator.permissions.query({ name: 'microphone' }).then(function (permissionStatus) {
       if (permissionStatus.state === 'denied') {
-        resultBox.textContent = "Permission denied: Please allow microphone access in your browser settings.";
+        resultBox.textContent = "Permission denied: Please enable microphone access.";
+        showMicrophoneInstructions();
       } else {
         startRecognition();
       }
@@ -21,7 +21,7 @@ startButton.addEventListener('click', function () {
       resultBox.textContent = "Error checking permissions: " + error;
     });
   } else {
-    // If navigator.permissions is not supported, try starting recognition directly
+    // If no permission API, try to start recognition directly
     startRecognition();
   }
 });
@@ -35,6 +35,13 @@ function startRecognition() {
     resultBox.textContent = "Error starting recognition: " + error.message;
     console.error("Error starting recognition:", error);
   }
+}
+
+function showMicrophoneInstructions() {
+  // Show user instructions for enabling microphone in the browser
+  alert("Please enable microphone access in your browser settings.");
+  // Alternatively, you could show a more custom message in your extension's popup
+  resultBox.textContent = "To use voice commands, please allow microphone access in your browser settings.";
 }
 
 // Handle speech results
