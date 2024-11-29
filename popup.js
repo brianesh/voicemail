@@ -1,81 +1,74 @@
-// Wait for the DOM to fully load before adding event listeners
-document.addEventListener('DOMContentLoaded', () => {
-  // Select the button by its ID
-  const voiceToggleBtn = document.getElementById('voiceToggleBtn');
-  
-  // Ensure the button exists before adding the event listener
-  if (voiceToggleBtn) {
-      voiceToggleBtn.addEventListener('click', () => {
-          console.log('Voice toggle button clicked');
-          
-          // Toggle the voice recognition functionality
-          toggleVoiceRecognition();
-      });
-  } else {
-      console.error('Voice toggle button not found in the DOM');
-  }
-});
+// Declare the voice recognition state globally
+let isVoiceEnabled = false;
 
-// Ensure window.isVoiceEnabled is defined (initialize if not)
-if (typeof window.isVoiceEnabled === 'undefined') {
-  window.isVoiceEnabled = false; // Initialize as false
-}
+// Ensure the DOM is fully loaded before executing the script
+document.addEventListener('DOMContentLoaded', function () {
+    const voiceToggleBtn = document.getElementById('voiceToggleBtn');
+    
+    // Check if the button exists in the DOM
+    if (voiceToggleBtn) {
+        // Add event listener for click event
+        voiceToggleBtn.addEventListener('click', function () {
+            console.log('Voice toggle button clicked');
+            toggleVoiceRecognition();  // Call the function to toggle voice recognition
+        });
+    } else {
+        console.error('Voice toggle button not found in the DOM');
+    }
+});
 
 // Function to handle the logic of enabling/disabling voice recognition
 function toggleVoiceRecognition() {
-  // Check if voice recognition is enabled or not
-  if (window.isVoiceEnabled) {
-      // Stop voice recognition (implement stop logic)
-      console.log('Voice recognition stopped');
-      window.isVoiceEnabled = false;
-      stopSpeechRecognition();  // Call function to stop voice recognition
-  } else {
-      // Start voice recognition (implement start logic)
-      console.log('Voice recognition started');
-      window.isVoiceEnabled = true;
-      startSpeechRecognition();  // Call function to start voice recognition
-  }
+    if (isVoiceEnabled) {
+        console.log('Voice recognition stopped');
+        isVoiceEnabled = false;
+        stopSpeechRecognition();  // Stop voice recognition
+    } else {
+        console.log('Voice recognition started');
+        isVoiceEnabled = true;
+        startSpeechRecognition();  // Start voice recognition
+    }
 }
 
-// Placeholder function to start speech recognition (replace with actual implementation)
+// Function to start speech recognition
 function startSpeechRecognition() {
-  // Check if SpeechRecognition API is available
-  if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
-      const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-      recognition.lang = 'en-US'; // Set the language
-      recognition.continuous = true; // Keep recognizing as the user speaks
-      
-      recognition.onstart = () => {
-          console.log('Speech recognition started');
-      };
+    // Check if SpeechRecognition API is available in the browser
+    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.lang = 'en-US';  // Set the language to English
+        recognition.continuous = true;  // Keep listening to the user
 
-      recognition.onresult = (event) => {
-          const transcript = event.results[event.results.length - 1][0].transcript;
-          console.log('You said: ', transcript);
-          // Process the speech result here (like sending an email or performing actions)
-      };
+        recognition.onstart = function () {
+            console.log('Speech recognition started');
+        };
 
-      recognition.onerror = (event) => {
-          console.error('Speech recognition error: ', event.error);
-      };
+        recognition.onresult = function (event) {
+            const transcript = event.results[event.results.length - 1][0].transcript;
+            console.log('You said: ', transcript);
+            // Add logic here to handle the result (e.g., send email)
+        };
 
-      recognition.onend = () => {
-          console.log('Speech recognition ended');
-          if (window.isVoiceEnabled) {
-              recognition.start(); // Restart if voice recognition is still enabled
-          }
-      };
+        recognition.onerror = function (event) {
+            console.error('Speech recognition error: ', event.error);
+        };
 
-      // Start recognition
-      recognition.start();
-  } else {
-      console.log('Speech recognition is not supported in this browser.');
-  }
+        recognition.onend = function () {
+            console.log('Speech recognition ended');
+            if (isVoiceEnabled) {
+                recognition.start();  // Restart if voice recognition is still enabled
+            }
+        };
+
+        // Start listening
+        recognition.start();
+    } else {
+        console.error('Speech recognition is not supported in this browser.');
+    }
 }
 
-// Function to stop speech recognition (add your logic here)
+// Function to stop speech recognition (placeholder logic for now)
 function stopSpeechRecognition() {
-  // Logic to stop the speech recognition if running
-  console.log('Stopping voice recognition...');
-  // You would typically need to track the recognition instance globally
+    console.log('Stopping voice recognition...');
+    // Implement logic to stop the recognition if it's running
+    // Note: In real-world cases, you would need to keep track of the recognition instance
 }
