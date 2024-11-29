@@ -23,6 +23,8 @@ recognition.onerror = function (event) {
   if (event.error === 'not-allowed') {
     console.error("Microphone access denied: ", event);
     showMicrophoneInstructions();
+  } else {
+    console.error("Speech recognition error: ", event);
   }
 };
 
@@ -31,7 +33,7 @@ startButton.addEventListener("click", function () {
   // Attempt to request microphone permission
   navigator.mediaDevices.getUserMedia({ audio: true })
     .then(function (stream) {
-      // Only start recognition if microphone access is granted
+      // Microphone access granted, start recognition
       recognition.start();  // Start the speech recognition process
       console.log("Speech recognition started.");
     })
