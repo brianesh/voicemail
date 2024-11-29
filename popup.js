@@ -1,63 +1,74 @@
-// Get elements from popup.html
-const voiceToggleBtn = document.getElementById('voice-toggle');
-const statusText = document.getElementById('status-text');
-const currentLanguage = document.getElementById('current-language');
-const currentRate = document.getElementById('current-rate');
-const currentPitch = document.getElementById('current-pitch');
+// popup.js
 
-// Initialize voice recognition state
-let isVoiceActive = false;
-
-// Load stored settings from chrome.storage
-chrome.storage.sync.get(['language', 'rate', 'pitch'], (settings) => {
-    const language = settings.language || 'en-US';
-    const rate = settings.rate || 1;
-    const pitch = settings.pitch || 1;
-
-    // Set current settings in the popup
-    currentLanguage.textContent = language;
-    currentRate.textContent = rate;
-    currentPitch.textContent = pitch;
+// Wait for the DOM to fully load before adding event listeners
+document.addEventListener('DOMContentLoaded', () => {
+  // Select the button by its ID
+  const voiceToggleBtn = document.getElementById('voiceToggleBtn');
+  
+  // Ensure the button exists before adding the event listener
+  if (voiceToggleBtn) {
+      voiceToggleBtn.addEventListener('click', () => {
+          console.log('Voice toggle button clicked');
+          
+          // Toggle the voice recognition functionality
+          toggleVoiceRecognition();
+      });
+  } else {
+      console.error('Voice toggle button not found in the DOM');
+  }
 });
 
-// Toggle voice recognition
-voiceToggleBtn.addEventListener('click', () => {
-    isVoiceActive = !isVoiceActive;
+// Function to handle the logic of enabling/disabling voice recognition
+function toggleVoiceRecognition() {
+  // Example logic to toggle voice recognition (you can replace this with actual functionality)
+  console.log('Voice recognition toggled');
 
-    if (isVoiceActive) {
-        voiceToggleBtn.textContent = 'Stop Voice Recognition';
-        statusText.textContent = 'Voice recognition is active. Speak now.';
-        startVoiceRecognition();
-    } else {
-        voiceToggleBtn.textContent = 'Start Voice Recognition';
-        statusText.textContent = 'Voice recognition is off.';
-        stopVoiceRecognition();
-    }
-});
+  // Check if voice recognition is enabled or not
+  if (window.isVoiceEnabled) {
+      // Stop voice recognition (you'll need to implement this in your speech recognition logic)
+      console.log('Voice recognition stopped');
+      window.isVoiceEnabled = false;
+  } else {
+      // Start voice recognition (implement your logic here)
+      console.log('Voice recognition started');
+      window.isVoiceEnabled = true;
 
-// Start voice recognition (Web Speech API or similar method)
-function startVoiceRecognition() {
-    if ('SpeechRecognition' in window) {
-        const recognition = new SpeechRecognition();
-        recognition.lang = currentLanguage.textContent;
-        recognition.rate = currentRate.textContent;
-        recognition.pitch = currentPitch.textContent;
-
-        recognition.start();
-        
-        recognition.onresult = function(event) {
-            const speechResult = event.results[0][0].transcript;
-            console.log("Speech recognized: ", speechResult);
-            // Process speech result to fill email fields
-        };
-
-        recognition.onerror = function(event) {
-            console.error("Speech recognition error: ", event.error);
-        };
-    }
+      // Example of using the SpeechRecognition API to start voice recognition
+      startSpeechRecognition();
+  }
 }
 
-// Stop voice recognition
-function stopVoiceRecognition() {
-    // If you have a recognition instance, stop it here
+// Placeholder function to start speech recognition (replace with actual implementation)
+function startSpeechRecognition() {
+  if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+      const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      recognition.lang = 'en-US'; // Set the language
+      recognition.continuous = true; // Keep recognizing as the user speaks
+      
+      recognition.onstart = () => {
+          console.log('Speech recognition started');
+      };
+
+      recognition.onresult = (event) => {
+          const transcript = event.results[event.results.length - 1][0].transcript;
+          console.log('You said: ', transcript);
+          // Process the speech result here (like sending an email or performing actions)
+      };
+
+      recognition.onerror = (event) => {
+          console.error('Speech recognition error: ', event.error);
+      };
+
+      recognition.onend = () => {
+          console.log('Speech recognition ended');
+          if (window.isVoiceEnabled) {
+              recognition.start(); // Restart if voice recognition is still enabled
+          }
+      };
+
+      // Start recognition
+      recognition.start();
+  } else {
+      console.log('Speech recognition is not supported in this browser.');
+  }
 }
