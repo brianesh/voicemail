@@ -1,5 +1,3 @@
-// popup.js
-
 const startButton = document.getElementById("start-listening");
 const resultBox = document.getElementById("result-box");
 
@@ -8,13 +6,14 @@ recognition.continuous = false;
 recognition.interimResults = false;
 
 startButton.addEventListener('click', function () {
-  // Ask for permission to use the microphone
+  // Request permission to access the microphone
   navigator.mediaDevices.getUserMedia({ audio: true })
     .then(function (stream) {
-      // If access is granted, start the recognition
+      // Permission granted, now start recognition
       startRecognition();
     })
     .catch(function (error) {
+      // Permission denied, show instructions
       resultBox.textContent = "Permission denied: Please allow microphone access.";
       showMicrophoneInstructions();
     });
@@ -32,7 +31,6 @@ function startRecognition() {
 }
 
 function showMicrophoneInstructions() {
-  // Show instructions on how to enable microphone
   alert("Please enable microphone access in your browser settings.");
   resultBox.textContent = "To use voice commands, please allow microphone access in your browser settings.";
 }
