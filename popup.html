@@ -1,32 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice-Activated Email</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice Email Extension</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="popup-container">
-        <h1>Voice-Activated Email</h1>
-
-        <!-- Start/Stop voice recognition button -->
-        <button id="voiceToggleBtn">Toggle Voice Recognition</button>
-
-
-        <!-- Display the current language, rate, and pitch -->
-        <div class="status">
-            <p id="status-text">Voice recognition is off.</p>
-        </div>
-
-        <div class="preferences">
-            <p>Current Settings:</p>
-            <p><strong>Language:</strong> <span id="current-language">English (US)</span></p>
-            <p><strong>Rate:</strong> <span id="current-rate">1</span></p>
-            <p><strong>Pitch:</strong> <span id="current-pitch">1</span></p>
-        </div>
-    </div>
-
-    <script src="popup.js"></script>
+  <div id="popup">
+    <h1>Voice-Activated Email</h1>
+    <p>Click the button to start voice commands.</p>
+    <button id="start-recognition">Start Listening</button>
+  </div>
+  <script src="popup.js"></script>
 </body>
 </html>

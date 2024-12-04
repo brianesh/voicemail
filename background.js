@@ -1,77 +1,53 @@
-// Listen for the extension's installation
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('Voice-Activated Email Extension installed.');
-  // You can set default settings on installation if needed
-  chrome.storage.sync.get(['language', 'rate', 'pitch'], (settings) => {
-      if (!settings.language) {
-          // Set default settings if not already set
-          chrome.storage.sync.set({
-              language: 'en-US',
-              rate: 1,
-              pitch: 1
-          });
-      }
+    console.log("Voice-Activated Email Extension Installed");
   });
-});
-
-// Listen for messages from content scripts or popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'startVoiceRecognition') {
-      // Start voice recognition process
-      startVoiceRecognition(request, sendResponse);
-  }
-  if (request.action === 'stopVoiceRecognition') {
-      // Stop the voice recognition process
-      stopVoiceRecognition();
-  }
-  return true;  // Indicates you will send a response asynchronously
-});
-
-// Start voice recognition
-function startVoiceRecognition(request, sendResponse) {
-  const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
   
-  recognition.lang = request.language || 'en-US';  // Get the language from the request or default to English
-  recognition.continuous = true;  // Keep listening for new speech
-  recognition.interimResults = true;  // Get real-time recognition
-  recognition.maxAlternatives = 1;  // Only consider the top alternative
+  // Initialize Speech Recognition
+  let recognition;
   
-  // Event handler for when speech recognition starts
-  recognition.onstart = () => {
-      console.log('Voice recognition started...');
-      sendResponse({ status: 'started' });
-  };
-
-  // Event handler for when speech recognition results are returned
-  recognition.onresult = (event) => {
-      const transcript = event.results[event.resultIndex][0].transcript;
-      console.log('Voice recognition result: ', transcript);
-      
-      // Send the result to the popup or content script
-      chrome.runtime.sendMessage({
-          action: 'voiceRecognitionResult',
-          result: transcript
+  function startSpeechRecognition() {
+    if ('webkitSpeechRecognition' in window) {
+      recognition = new webkitSpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+  
+      recognition.onstart = () => console.log("Speech recognition started.");
+      recognition.onresult = handleSpeechResult;
+      recognition.onerror = (event) => console.error("Speech recognition error", event);
+      recognition.onend = () => console.log("Speech recognition ended.");
+      recognition.start();
+    } else {
+      console.log("Speech Recognition is not supported by this browser.");
+    }
+  }
+  
+  function handleSpeechResult(event) {
+    const speechTranscript = event.results[event.resultIndex][0].transcript;
+    console.log("Speech recognized:", speechTranscript);
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      chrome.scripting.executeScript({
+        target: { tabId: tabs[0].id },
+        func: processCommand,
+        args: [speechTranscript]
       });
-  };
-
-  // Event handler for errors
-  recognition.onerror = (event) => {
-      console.error('Error in speech recognition: ', event.error);
-      sendResponse({ status: 'error', message: event.error });
-  };
-
-  // Event handler for when speech recognition stops
-  recognition.onend = () => {
-      console.log('Voice recognition stopped.');
-  };
-
-  // Start listening
-  recognition.start();
-}
-
-// Stop voice recognition
-function stopVoiceRecognition() {
-  const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-  recognition.stop();
-  console.log('Voice recognition stopped manually.');
-}
+    });
+  }
+  
+  function processCommand(command) {
+    if (command.includes('compose email')) {
+      document.querySelector('div[aria-label="Compose"]').click(); // Gmail compose button
+    } else if (command.includes('send email')) {
+      document.querySelector('div[aria-label="Send ‪(Ctrl-Enter)‬"]').click(); // Gmail send button
+    } else if (command.includes('delete email')) {
+      document.querySelector('div[aria-label="Delete"]').click(); // Gmail delete button
+    } else if (command.includes('reply email')) {
+      document.querySelector('div[aria-label="Reply"]').click(); // Gmail reply button
+    } else {
+      console.log("Unknown command:", command);
+    }
+  }
+  
+  // Start recognition on extension popup open
+  chrome.action.onClicked.addListener(startSpeechRecognition);
+  
