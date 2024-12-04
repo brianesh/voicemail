@@ -4,46 +4,45 @@
     "version": "1.0",
     "description": "A browser extension to manage emails with voice commands for visually impaired users.",
     "permissions": [
-      "activeTab",
-      "storage",
-      "identity"
+        "activeTab",
+        "storage",
+        "identity"
     ],
     "background": {
-      "service_worker": "background.js"
+        "service_worker": "background.js"
     },
     "action": {
-      "default_popup": "popup.html",
-      "default_icon": "icons/icon16.png"
+        "default_popup": "popup.html",
+        "default_icon": "icons/icon.png"
     },
     "content_scripts": [
-      {
-        "matches": ["*://mail.google.com/*", "*://outlook.live.com/*"],
-        "js": ["content.js"]
-      }
+        {
+            "matches": ["*://mail.google.com/*", "*://outlook.live.com/*"],
+            "js": ["content.js"]
+        }
     ],
     "host_permissions": [
-      "http://*/*",
-      "https://*/*"
+        "http://*/*",
+        "https://*/*"
     ],
     "commands": {
-      "compose_email": {
-        "suggested_key": {
-          "default": "Ctrl+Shift+C"
+        "compose_email": {
+            "suggested_key": {
+                "default": "Ctrl+Shift+C"
+            },
+            "description": "Compose a new email"
         },
-        "description": "Compose a new email"
-      },
-      "send_email": {
-        "suggested_key": {
-          "default": "Ctrl+Shift+S"
+        "send_email": {
+            "suggested_key": {
+                "default": "Ctrl+Shift+S"
+            },
+            "description": "Send the current email"
         },
-        "description": "Send the current email"
-      },
-      "delete_email": {
-        "suggested_key": {
-          "default": "Ctrl+Shift+D"
-        },
-        "description": "Delete the current email"
-      }
+        "delete_email": {
+            "suggested_key": {
+                "default": "Ctrl+Shift+D"
+            },
+            "description": "Delete the current email"
+        }
     }
-  }
-  
+}
