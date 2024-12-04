@@ -33,21 +33,59 @@ chrome.runtime.onInstalled.addListener(() => {
       });
     });
   }
-  
+
   function processCommand(command) {
+    const feedback = new SpeechSynthesisUtterance();
+    
     if (command.includes('compose email')) {
-      document.querySelector('div[aria-label="Compose"]').click(); // Gmail compose button
+      document.querySelector('div[aria-label="Compose"]').click();
+      feedback.text = "The compose window is now open.";
     } else if (command.includes('send email')) {
-      document.querySelector('div[aria-label="Send ‪(Ctrl-Enter)‬"]').click(); // Gmail send button
+      document.querySelector('div[aria-label="Send ‪(Ctrl-Enter)‬"]').click();
+      feedback.text = "The email has been sent.";
     } else if (command.includes('delete email')) {
-      document.querySelector('div[aria-label="Delete"]').click(); // Gmail delete button
+      document.querySelector('div[aria-label="Delete"]').click();
+      feedback.text = "The email has been deleted.";
     } else if (command.includes('reply email')) {
-      document.querySelector('div[aria-label="Reply"]').click(); // Gmail reply button
+      document.querySelector('div[aria-label="Reply"]').click();
+      feedback.text = "You are replying to the email now.";
     } else {
-      console.log("Unknown command:", command);
+      feedback.text = "Unknown command.";
     }
+  
+    window.speechSynthesis.speak(feedback);
   }
+  
   
   // Start recognition on extension popup open
   chrome.action.onClicked.addListener(startSpeechRecognition);
+
+  chrome.commands.onCommand.addListener((command) => {
+    if (command === "compose_email") {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        chrome.scripting.executeScript({
+          target: { tabId: tabs[0].id },
+          func: processCommand,
+          args: ["compose email"]
+        });
+      });
+    } else if (command === "send_email") {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        chrome.scripting.executeScript({
+          target: { tabId: tabs[0].id },
+          func: processCommand,
+          args: ["send email"]
+        });
+      });
+    } else if (command === "delete_email") {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        chrome.scripting.executeScript({
+          target: { tabId: tabs[0].id },
+          func: processCommand,
+          args: ["delete email"]
+        });
+      });
+    }
+  });
+  
   

@@ -17,13 +17,33 @@
     },
     "content_scripts": [
       {
-        "matches": ["*://mail.google.com/*", "*://outlook.live.com/*"], 
+        "matches": ["*://mail.google.com/*", "*://outlook.live.com/*"],
         "js": ["content.js"]
       }
     ],
     "host_permissions": [
       "http://*/*",
       "https://*/*"
-    ]
+    ],
+    "commands": {
+      "compose_email": {
+        "suggested_key": {
+          "default": "Ctrl+Shift+C"
+        },
+        "description": "Compose a new email"
+      },
+      "send_email": {
+        "suggested_key": {
+          "default": "Ctrl+Shift+S"
+        },
+        "description": "Send the current email"
+      },
+      "delete_email": {
+        "suggested_key": {
+          "default": "Ctrl+Shift+D"
+        },
+        "description": "Delete the current email"
+      }
+    }
   }
   

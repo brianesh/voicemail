@@ -7,11 +7,11 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="popup">
-    <h1>Voice-Activated Email</h1>
-    <p>Click the button to start voice commands.</p>
-    <button id="start-recognition">Start Listening</button>
-  </div>
+    <div id="popup" role="dialog" aria-labelledby="popupTitle" aria-describedby="popupDesc">
+        <h1 id="popupTitle">Voice-Activated Email</h1>
+        <p id="popupDesc">Click the button to start voice commands.</p>
+        <button id="start-recognition" aria-label="Start listening for voice commands">Start Listening</button>
+      </div>
   <script src="popup.js"></script>
 </body>
 </html>

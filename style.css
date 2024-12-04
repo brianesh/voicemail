@@ -2,6 +2,7 @@ body {
   font-family: Arial, sans-serif;
   width: 300px;
   padding: 10px;
+  background-color: #f4f4f4;
 }
 
 #popup {
@@ -11,12 +12,17 @@ body {
 }
 
 button {
-  padding: 10px 20px;
+  padding: 12px 24px;
   background-color: #4CAF50;
   color: white;
   border: none;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 18px;
+  border-radius: 4px;
+}
+
+button:focus {
+  outline: 2px solid #000;
 }
 
 button:hover {
