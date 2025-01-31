@@ -8,7 +8,6 @@ document.getElementById("start-recognition").addEventListener("click", function 
     
     statusElement.textContent = "Status: Listening...";
   
-    // Initialize speech recognition (Web Speech API)
     const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
     
     recognition.lang = 'en-US';
@@ -21,7 +20,6 @@ document.getElementById("start-recognition").addEventListener("click", function 
       const command = event.results[0][0].transcript.toLowerCase();
       console.log("Voice command: ", command);
       
-      // Handle commands
       handleCommand(command);
     };
   
