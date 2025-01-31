@@ -1,5 +1,4 @@
 document.getElementById("start-recognition").addEventListener("click", function () {
-    // Start speech recognition
     startVoiceRecognition();
   });
   
