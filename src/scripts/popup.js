@@ -32,7 +32,7 @@ document.getElementById("start-recognition").addEventListener("click", function 
   }
   
   function handleCommand(command) {
-    // Example command handling (you can expand this)
+
     if (command.includes("open inbox")) {
       chrome.tabs.create({ url: "https://mail.google.com/mail/u/0/#inbox" });
     } else if (command.includes("compose email")) {
