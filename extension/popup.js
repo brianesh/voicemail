@@ -7,19 +7,15 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     startButton.addEventListener("click", function () {
-        console.log("Button clicked! Requesting microphone access...");
+        console.log("Button clicked! Sending message to content script...");
 
-        // Force user to interact with the page before requesting access
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(function (stream) {
-                console.log("Microphone access granted.");
-                stream.getTracks().forEach(track => track.stop()); // Stop mic after checking permission
-                startSpeechRecognition(); // Start recognition only if access is granted
-            })
-            .catch(function (error) {
-                console.error("Microphone access denied:", error);
-                alert("Microphone access is blocked. Go to Chrome settings and allow microphone access.");
+        // Send a message to content.js to start speech recognition
+        chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+            chrome.scripting.executeScript({
+                target: { tabId: tabs[0].id },
+                function: startSpeechRecognition
             });
+        });
     });
 
     function startSpeechRecognition() {
@@ -30,8 +26,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         let recognition = new webkitSpeechRecognition();
         recognition.lang = "en-US";
-        recognition.continuous = false; // Stops after one sentence
-        recognition.interimResults = false; // Returns final results only
+        recognition.continuous = false;
+        recognition.interimResults = false;
         recognition.start();
 
         console.log("Speech recognition started...");
