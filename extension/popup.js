@@ -9,15 +9,16 @@ document.addEventListener("DOMContentLoaded", function () {
     startButton.addEventListener("click", function () {
         console.log("Button clicked! Requesting microphone access...");
 
-        // Request microphone permission
+        // Force user to interact with the page before requesting access
         navigator.mediaDevices.getUserMedia({ audio: true })
             .then(function (stream) {
                 console.log("Microphone access granted.");
-                startSpeechRecognition();
+                stream.getTracks().forEach(track => track.stop()); // Stop mic after checking permission
+                startSpeechRecognition(); // Start recognition only if access is granted
             })
             .catch(function (error) {
                 console.error("Microphone access denied:", error);
-                alert("Please allow microphone access in Chrome settings.");
+                alert("Microphone access is blocked. Go to Chrome settings and allow microphone access.");
             });
     });
 
