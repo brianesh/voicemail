@@ -3,7 +3,7 @@
     "name": "Voice Email Assistant",
     "version": "1.0",
     "description": "A voice-activated email assistant for visually impaired users.",
-    "permissions": ["storage", "activeTab", "scripting"],
+    "permissions": ["storage", "activeTab", "scripting", "microphone"],
     "host_permissions": ["https://mail.google.com/*"],
     "background": {
       "service_worker": "background.js"
