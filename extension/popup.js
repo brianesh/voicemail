@@ -1,6 +1,18 @@
 document.addEventListener("DOMContentLoaded", function () {
-    document.getElementById("start").addEventListener("click", startVoiceRecognition);
+    document.getElementById("start").addEventListener("click", requestMicrophonePermission);
 });
+
+function requestMicrophonePermission() {
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(() => {
+            console.log("Microphone permission granted.");
+            startVoiceRecognition();
+        })
+        .catch((error) => {
+            console.error("Microphone permission denied:", error);
+            alert("Please allow microphone access for voice commands to work.");
+        });
+}
 
 function startVoiceRecognition() {
     if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
@@ -24,27 +36,7 @@ function startVoiceRecognition() {
 
     recognition.onerror = function (event) {
         console.error("Speech Recognition Error:", event.error);
-
-        let errorMessage = "An error occurred.";
-        switch (event.error) {
-            case "no-speech":
-                errorMessage = "No speech detected. Please try again.";
-                break;
-            case "audio-capture":
-                errorMessage = "Microphone not detected. Check your settings.";
-                break;
-            case "not-allowed":
-                errorMessage = "Microphone access denied. Allow permissions.";
-                break;
-            case "aborted":
-                errorMessage = "Speech recognition was aborted.";
-                break;
-            default:
-                errorMessage = "Sorry, I couldn't understand that.";
-                break;
-        }
-
-        speak(errorMessage);
+        speak("Sorry, I couldn't understand that.");
     };
 
     recognition.onend = function () {
