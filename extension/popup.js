@@ -1,67 +1,50 @@
-document.getElementById("start-recognition").addEventListener("click", function () {
-    startVoiceRecognition();
-  });
-  
-  function startVoiceRecognition() {
-    const statusElement = document.getElementById("status");
-  
-    statusElement.textContent = "Status: Listening...";
-  
-    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-  
-    recognition.start();
-  
-    recognition.onresult = function (event) {
-      const command = event.results[0][0].transcript.toLowerCase();
-      console.log("Voice command: ", command);
-      
-      handleCommand(command);
-    };
-  
-    recognition.onerror = function (event) {
-      console.error("Speech recognition error: ", event.error);
-      statusElement.textContent = "Status: Error, try again.";
-      speak("I couldn't understand that. Please try again.");
-    };
-  
-    recognition.onend = function () {
-      statusElement.textContent = "Status: Idle";
-    };
-  }
-  
-  function handleCommand(command) {
-    const statusElement = document.getElementById("status");
-  
-    if (command.includes("open inbox")) {
-      statusElement.textContent = "Status: Opening Inbox...";
-      speak("Opening your inbox.");
-      
-      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: "openInbox" });
-      });
-  
-    } else if (command.includes("compose email")) {
-      statusElement.textContent = "Status: Composing Email...";
-      speak("Opening the compose email page.");
-      
-      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: "composeEmail" });
-      });
-  
-    } else {
-      statusElement.textContent = "Status: Command not recognized.";
-      speak("Sorry, I didn't understand that command.");
+document.addEventListener("DOMContentLoaded", function () {
+    let startButton = document.getElementById("start");
+
+    if (!startButton) {
+        console.error("Button #start not found!");
+        return;
     }
-  }
-  
-  // Text-to-Speech Function
-  function speak(text) {
-    const speech = new SpeechSynthesisUtterance(text);
-    speech.lang = "en-US";
-    speechSynthesis.speak(speech);
-  }
-  
+
+    startButton.addEventListener("click", function () {
+        console.log("Button clicked! Sending message to content script...");
+
+        // Send a message to content.js to start speech recognition
+        chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+            chrome.scripting.executeScript({
+                target: { tabId: tabs[0].id },
+                function: startSpeechRecognition
+            });
+        });
+    });
+
+    function startSpeechRecognition() {
+        if (!window.webkitSpeechRecognition) {
+            alert("Your browser does not support Speech Recognition.");
+            return;
+        }
+
+        let recognition = new webkitSpeechRecognition();
+        recognition.lang = "en-US";
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.start();
+
+        console.log("Speech recognition started...");
+
+        recognition.onresult = function (event) {
+            let command = event.results[0][0].transcript;
+            console.log("Recognized:", command);
+            alert("You said: " + command);
+        };
+
+        recognition.onerror = function (event) {
+            console.error("Speech recognition error:", event.error);
+            alert("Speech recognition error: " + event.error);
+        };
+
+        recognition.onend = function () {
+            console.log("Speech recognition ended.");
+        };
+    }
+});
