@@ -1,19 +1,19 @@
 {
-  "manifest_version": 3,
-  "name": "VoiceMail Assistant",
+  "name": "VoiceMail",
   "version": "1.0",
-  "description": "Voice-controlled email assistant for Gmail",
-  "icons": {
-      "16": "assets/icon16.png",
-      "48": "assets/icon48.png",
-      "128": "assets/icon128.png"
-  },
-  "permissions": [
-      "tabs"
-  ],
+  "manifest_version": 3,
+  "description": "Control Gmail & Yahoo Mail using Voice Commands",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["https://mail.google.com/*", "https://mail.yahoo.com/*"],
   "background": {
       "service_worker": "background.js"
   },
+  "content_scripts": [
+      {
+          "matches": ["https://mail.google.com/*", "https://mail.yahoo.com/*"],
+          "js": ["content.js"]
+      }
+  ],
   "action": {
       "default_popup": "popup.html",
       "default_icon": {
