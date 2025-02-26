@@ -1,50 +1,54 @@
 document.addEventListener("DOMContentLoaded", function () {
-    let startButton = document.getElementById("start");
+    document.getElementById("start").addEventListener("click", startVoiceRecognition);
+});
 
-    if (!startButton) {
-        console.error("Button #start not found!");
+function startVoiceRecognition() {
+    if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
+        alert("Your browser does not support Speech Recognition.");
         return;
     }
 
-    startButton.addEventListener("click", function () {
-        console.log("Button clicked! Sending message to content script...");
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
 
-        // Send a message to content.js to start speech recognition
-        chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-            chrome.scripting.executeScript({
-                target: { tabId: tabs[0].id },
-                function: startSpeechRecognition
-            });
-        });
-    });
+    recognition.start();
 
-    function startSpeechRecognition() {
-        if (!window.webkitSpeechRecognition) {
-            alert("Your browser does not support Speech Recognition.");
-            return;
-        }
+    recognition.onresult = function (event) {
+        const command = event.results[0][0].transcript.toLowerCase();
+        console.log("Recognized Command:", command);
 
-        let recognition = new webkitSpeechRecognition();
-        recognition.lang = "en-US";
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.start();
+        handleCommand(command);
+    };
 
-        console.log("Speech recognition started...");
+    recognition.onerror = function (event) {
+        console.error("Speech Recognition Error:", event.error);
+        speak("Sorry, I couldn't understand that.");
+    };
 
-        recognition.onresult = function (event) {
-            let command = event.results[0][0].transcript;
-            console.log("Recognized:", command);
-            alert("You said: " + command);
-        };
+    recognition.onend = function () {
+        console.log("Voice recognition ended.");
+    };
+}
 
-        recognition.onerror = function (event) {
-            console.error("Speech recognition error:", event.error);
-            alert("Speech recognition error: " + event.error);
-        };
+function handleCommand(command) {
+    if (command.includes("open inbox")) {
+        speak("Opening your inbox.");
+        chrome.tabs.create({ url: "https://mail.google.com/mail/u/0/#inbox" });
 
-        recognition.onend = function () {
-            console.log("Speech recognition ended.");
-        };
+    } else if (command.includes("compose email")) {
+        speak("Opening the compose email page.");
+        chrome.tabs.create({ url: "https://mail.google.com/mail/u/0/#inbox?compose=new" });
+
+    } else {
+        speak("Sorry, I didn't understand that command.");
     }
-});
+}
+
+// Text-to-Speech (TTS)
+function speak(text) {
+    const speech = new SpeechSynthesisUtterance(text);
+    speech.lang = "en-US";
+    window.speechSynthesis.speak(speech);
+}
