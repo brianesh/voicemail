@@ -1,4 +1,4 @@
-console.log("Voice Email Assistant is active on Gmail.");
+console.log("Voice Assistant is active on Gmail.");
 
 function startSpeechRecognition() {
     navigator.mediaDevices.getUserMedia({ audio: true })
@@ -15,36 +15,31 @@ function startSpeechRecognition() {
             recognition.start();
             console.log("Speech recognition started...");
 
+            let speechTimeout = setTimeout(() => {
+                console.warn("No speech detected, restarting...");
+                recognition.stop();
+                recognition.start();
+            }, 10000); // Restart after 10 seconds of silence
+
             recognition.onresult = function (event) {
+                clearTimeout(speechTimeout); // Reset timeout when speech is detected
                 let command = event.results[0][0].transcript.toLowerCase();
                 console.log("Recognized:", command);
-
-                if (command.includes("read my emails")) {
-                    alert("Fetching your unread emails...");
-                    fetchEmails();
-                } else if (command.includes("send email")) {
-                    alert("Who do you want to email?");
-                } else {
-                    alert("Command not recognized.");
-                }
             };
 
             recognition.onerror = function (event) {
                 console.error("Speech recognition error:", event.error);
                 if (event.error === "no-speech") {
-                    alert("No speech detected. Please try again.");
-                } else {
-                    alert("Speech recognition error: " + event.error);
+                    console.warn("No speech detected. Try speaking louder.");
                 }
             };
 
             recognition.onend = function () {
-                console.log("Speech recognition ended. Restarting...");
+                console.log("Recognition ended. Restarting...");
                 recognition.start(); // Restart automatically
             };
         })
         .catch(function (error) {
             console.error("Microphone access denied:", error);
-            alert("Please allow microphone access in Chrome settings.");
         });
 }
