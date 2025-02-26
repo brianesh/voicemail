@@ -24,7 +24,27 @@ function startVoiceRecognition() {
 
     recognition.onerror = function (event) {
         console.error("Speech Recognition Error:", event.error);
-        speak("Sorry, I couldn't understand that.");
+
+        let errorMessage = "An error occurred.";
+        switch (event.error) {
+            case "no-speech":
+                errorMessage = "No speech detected. Please try again.";
+                break;
+            case "audio-capture":
+                errorMessage = "Microphone not detected. Check your settings.";
+                break;
+            case "not-allowed":
+                errorMessage = "Microphone access denied. Allow permissions.";
+                break;
+            case "aborted":
+                errorMessage = "Speech recognition was aborted.";
+                break;
+            default:
+                errorMessage = "Sorry, I couldn't understand that.";
+                break;
+        }
+
+        speak(errorMessage);
     };
 
     recognition.onend = function () {
