@@ -1,25 +1,19 @@
 {
-  "name": "VoiceMail",
-  "version": "1.0",
-  "manifest_version": 3,
-  "description": "Control Gmail & Yahoo Mail using Voice Commands",
-  "permissions": ["activeTab", "scripting"],
-  "host_permissions": ["https://mail.google.com/*", "https://mail.yahoo.com/*"],
-  "background": {
+    "manifest_version": 3,
+    "name": "Voice Email Assistant",
+    "version": "1.0",
+    "description": "A voice-activated email assistant for visually impaired users.",
+    "permissions": ["storage", "activeTab", "scripting"],
+    "host_permissions": ["https://mail.google.com/*"],
+    "background": {
       "service_worker": "background.js"
-  },
-  "content_scripts": [
-      {
-          "matches": ["https://mail.google.com/*", "https://mail.yahoo.com/*"],
-          "js": ["content.js"]
-      }
-  ],
-  "action": {
-      "default_popup": "popup.html",
-      "default_icon": {
-          "16": "assets/icon16.png",
-          "48": "assets/icon48.png",
-          "128": "assets/icon128.png"
-      }
+    },
+    "action": {
+      "default_popup": "popup.html"
+    },
+    "content_scripts": [{
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content.js"]
+    }]
   }
-}
+  
