@@ -11,7 +11,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.command.includes("open inbox")) {
             url = "https://mail.google.com/mail/u/0/#inbox";
         } else if (message.command.includes("compose email")) {
-            url = "https://mail.google.com/mail/u/0/#inbox?compose=new";
+            chrome.runtime.sendMessage({ action: "start_email_composition" });
+            return; // Stop execution here to handle email composition separately
         } else if (message.command.includes("starred")) {
             url = "https://mail.google.com/mail/u/0/#starred";
         } else if (message.command.includes("snoozed")) {
@@ -39,5 +40,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 chrome.tabs.update(tabs[0].id, { url: url });
             });
         }
+    }
+
+    if (message.action === "start_email_composition") {
+        console.log("Opening Gmail Compose Window...");
+        chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+            if (tabs.length === 0) {
+                console.error("No active tab found!");
+                return;
+            }
+            chrome.tabs.update(tabs[0].id, { url: "https://mail.google.com/mail/u/0/#inbox?compose=new" });
+
+            // Wait for the compose window to open, then activate voice recognition
+            setTimeout(() => {
+                chrome.tabs.sendMessage(tabs[0].id, { action: "start_email_speech_recognition" });
+            }, 3000);
+        });
     }
 });
