@@ -7,18 +7,8 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     startButton.addEventListener("click", function () {
-        console.log("Button clicked! Sending message to content script...");
+        console.log("Button clicked! Starting voice recognition...");
 
-        // Send a message to content.js to start speech recognition
-        chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-            chrome.scripting.executeScript({
-                target: { tabId: tabs[0].id },
-                function: startSpeechRecognition
-            });
-        });
-    });
-
-    function startSpeechRecognition() {
         if (!window.webkitSpeechRecognition) {
             alert("Your browser does not support Speech Recognition.");
             return;
@@ -30,12 +20,13 @@ document.addEventListener("DOMContentLoaded", function () {
         recognition.interimResults = false;
         recognition.start();
 
-        console.log("Speech recognition started...");
-
         recognition.onresult = function (event) {
             let command = event.results[0][0].transcript;
             console.log("Recognized:", command);
             alert("You said: " + command);
+
+            // Send recognized command to background.js
+            chrome.runtime.sendMessage({ action: "process_command", command: command });
         };
 
         recognition.onerror = function (event) {
@@ -46,5 +37,5 @@ document.addEventListener("DOMContentLoaded", function () {
         recognition.onend = function () {
             console.log("Speech recognition ended.");
         };
-    }
+    });
 });
