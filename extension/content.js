@@ -45,29 +45,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "start_email_speech_recognition") {
         console.log("Starting Speech Recognition for Email Composition...");
 
-        let recognition = new webkitSpeechRecognition();
-        recognition.lang = "en-US";
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.start();
+        navigator.mediaDevices.getUserMedia({ audio: true }) // Request microphone access again
+            .then((stream) => {
+                let recognition = new webkitSpeechRecognition();
+                recognition.lang = "en-US";
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.start();
 
-        recognition.onresult = function (event) {
-            let emailCommand = event.results[0][0].transcript;
-            console.log("Email command:", emailCommand);
-            alert("You said: " + emailCommand);
+                recognition.onresult = function (event) {
+                    let emailCommand = event.results[0][0].transcript;
+                    console.log("Email command:", emailCommand);
+                    alert("You said: " + emailCommand);
 
-            let sendEmail = emailCommand.toLowerCase().endsWith("send"); // Detect if user says "send"
-            parseEmailCommand(emailCommand, sendEmail);
-        };
+                    let sendEmail = emailCommand.toLowerCase().endsWith("send"); // Check if user said "send"
+                    parseEmailCommand(emailCommand, sendEmail);
+                };
 
-        recognition.onerror = function (event) {
-            console.error("Speech recognition error:", event.error);
-            alert("Speech recognition error: " + event.error);
-        };
+                recognition.onerror = function (event) {
+                    console.error("Speech recognition error:", event.error);
+                    alert("Speech recognition error: " + event.error);
+                };
 
-        recognition.onend = function () {
-            console.log("Speech recognition ended.");
-        };
+                recognition.onend = function () {
+                    console.log("Speech recognition ended.");
+                };
+            })
+            .catch((error) => {
+                console.error("Microphone access denied:", error);
+                alert("Microphone access denied. Please enable it in Chrome settings.");
+            });
     }
 });
 
