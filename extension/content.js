@@ -102,7 +102,6 @@ function parseEmailCommand(command, sendEmail) {
     waitForComposeBox(to, cc, bcc, subject, body, sendEmail);
 }
 
-// ✅ **Waits for the Gmail Compose Box to Load**
 function waitForComposeBox(to, cc, bcc, subject, body, sendEmail) {
     let observer = new MutationObserver(() => {
         let composeBox = document.querySelector("div[role='dialog']");
