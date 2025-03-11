@@ -116,7 +116,6 @@ function waitForComposeBox(to, cc, bcc, subject, body, sendEmail) {
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
-// ✅ **Correctly Inserts Details into the Compose Box & Sends if Needed**
 function fillGmailComposeFields(to, cc, bcc, subject, body, sendEmail) {
     setTimeout(() => {
         let toField = document.querySelector("textarea[name='to']");
