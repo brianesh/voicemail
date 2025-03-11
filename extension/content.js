@@ -174,7 +174,7 @@ function fillGmailComposeFields(to, cc, bcc, subject, body, sendEmail) {
             setTimeout(() => {
                 sendButton.click();
                 alert("Email sent successfully!");
-            }, 1500); // Small delay before sending
+            }, 1500); 
         }
     }, 2000);
 }
