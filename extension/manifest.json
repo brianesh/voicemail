@@ -1,19 +1,20 @@
 {
-    "manifest_version": 3,
-    "name": "Voice Email Assistant",
-    "version": "1.0",
-    "description": "A voice-activated email assistant for visually impaired users.",
-    "permissions": ["storage", "activeTab", "scripting"],
-    "host_permissions": ["https://mail.google.com/*"],
-    "background": {
+  "manifest_version": 3,
+  "name": "Voice-Controlled Email Assistant",
+  "version": "1.0",
+  "description": "Fully hands-free voice-controlled Gmail assistant",
+  "permissions": ["tabs", "activeTab", "storage"],
+  "background": {
       "service_worker": "background.js"
-    },
-    "action": {
+  },
+  "host_permissions": ["https://mail.google.com/*"],
+  "content_scripts": [
+      {
+          "matches": ["https://mail.google.com/*"],
+          "js": ["content.js"]
+      }
+  ],
+  "action": {
       "default_popup": "popup.html"
-    },
-    "content_scripts": [{
-      "matches": ["https://mail.google.com/*"],
-      "js": ["content.js"]
-    }]
   }
-  
+}
