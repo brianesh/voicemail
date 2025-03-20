@@ -21,30 +21,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.action === "updateStatus") {
         listeningStatus = message.status;
+        chrome.storage.local.set({ listeningStatus: listeningStatus });
+        chrome.runtime.sendMessage({ action: "refreshPopup" });
     }
 
     if (message.action === "getStatus") {
         sendResponse({ status: listeningStatus });
     }
-
-    if (message.action === "commandRecognized") {
-        let command = message.command.toLowerCase();
-        console.log("Command recognized:", command);
-
-        if (command.includes("open inbox")) {
-            chrome.tabs.create({ url: "https://mail.google.com/mail/u/0/#inbox" });
-            chrome.runtime.sendMessage({ action: "speak", response: "Opening Inbox" });
-
-        } else if (command.includes("compose email")) {
-            chrome.tabs.create({ url: "https://mail.google.com/mail/u/0/#compose" });
-            chrome.runtime.sendMessage({ action: "speak", response: "Opening Compose Email" });
-
-        } else if (command.includes("read emails")) {
-            chrome.tabs.create({ url: "https://mail.google.com/mail/u/0/#all" });
-            chrome.runtime.sendMessage({ action: "speak", response: "Opening all emails" });
-
-        } else {
-            chrome.runtime.sendMessage({ action: "speak", response: "Sorry, I didn't understand that." });
-        }
-    }
 });
+
+// Function to start voice recognition
+function startRecognition() {
+    if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+        console.error("Speech recognition not supported.");
+        return;
+    }
+
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event) => {
+        let command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+        console.log("Recognized:", command);
+        chrome.runtime.sendMessage({ action: "commandRecognized", command });
+    };
+
+    recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+    };
+
+    recognition.start();
+    console.log("Voice recognition started...");
+}

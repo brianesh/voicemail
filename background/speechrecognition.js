@@ -1,68 +1,58 @@
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+function startVoiceRecognition() {
+    if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+        console.error("Speech recognition not supported in this browser.");
+        return;
+    }
 
-if (!SpeechRecognition) {
-    console.error("Speech recognition not supported.");
-}
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.continuous = true;  // Keeps listening even after a command
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
 
-const recognition = new SpeechRecognition();
-recognition.continuous = true;
-recognition.interimResults = false;
-recognition.lang = "en-US";
-
-let isListening = false;
-
-function startWakeWordDetection() {
-    recognition.start();
-    console.log("Listening for 'Hey Email'...");
-}
-
-recognition.onresult = (event) => {
-    let command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
-    console.log("Recognized:", command);
-
-    if (!isListening && command.includes("hey email")) {
-        isListening = true;
-        console.log("Wake word detected!");
-        speak("Hello! How can I help you?");
+    recognition.onstart = () => {
+        console.log("Listening...");
         chrome.runtime.sendMessage({ action: "updateStatus", status: "ON" });
-    } else if (isListening) {
-        executeCommand(command);
-    }
-};
+    };
 
-recognition.onerror = (event) => {
-    console.error("Speech recognition error:", event.error);
-    setTimeout(() => recognition.start(), 1000);
-};
+    recognition.onresult = (event) => {
+        let command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+        console.log("Recognized command:", command);
 
-recognition.onend = () => {
-    console.log("Recognition stopped. Restarting...");
-    setTimeout(() => recognition.start(), 1000);
-};
+        // Ensure command matching is case insensitive
+        if (command.includes("open inbox")) {
+            console.log("Opening Inbox...");
+            speakAndOpen("Opening inbox", "inbox");
+        } else if (command.includes("open sent")) {
+            console.log("Opening Sent...");
+            speakAndOpen("Opening sent emails", "sent");
+        } else if (command.includes("open snoozed")) {
+            console.log("Opening Snoozed...");
+            speakAndOpen("Opening snoozed emails", "snoozed");
+        } else if (command.includes("open starred")) {
+            console.log("Opening Starred...");
+            speakAndOpen("Opening starred emails", "starred");
+        } else {
+            console.log("Unrecognized command.");
+            speak("Sorry, I didn't understand that command.");
+        }
+    };
 
-function executeCommand(command) {
-    if (command.includes("open inbox")) {
-        speakAndOpen("Opening inbox", "inbox");
-    } else if (command.includes("open sent")) {
-        speakAndOpen("Opening sent", "sent");
-    } else if (command.includes("open snoozed")) {
-        speakAndOpen("Opening snoozed", "snoozed");
-    } else if (command.includes("open starred")) {
-        speakAndOpen("Opening starred", "starred");
-    } else if (command.includes("compose email")) {
-        speakAndOpen("Composing a new email", "compose");
-    } else if (command.includes("read emails")) {
-        readEmails();
-    } else if (command.includes("check unread emails")) {
-        checkUnreadCount();
-    } else {
-        speak("Sorry, I didn't understand that.");
-    }
+    recognition.onend = () => {
+        console.log("Stopped listening. Restarting...");
+        chrome.runtime.sendMessage({ action: "updateStatus", status: "OFF" });
+        setTimeout(() => recognition.start(), 1000);  // Restart listening
+    };
+
+    recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+    };
+
+    recognition.start();
 }
 
 function speakAndOpen(message, section) {
     speak(message);
-    setTimeout(() => openGmailSection(section), 1500);
+    setTimeout(() => openGmailSection(section), 1500);  // Delay to allow speech to play
 }
 
 function openGmailSection(section) {
@@ -76,33 +66,10 @@ function openGmailSection(section) {
     });
 }
 
-function readEmails() {
-    speak("Reading your latest emails...");
-    let url = "https://mail.google.com/mail/u/0/#inbox";
-    chrome.tabs.create({ url });
-}
-
-function checkUnreadCount() {
-    speak("Checking unread email count...");
-    fetch("https://mail.google.com/mail/feed/atom")
-        .then(response => response.text())
-        .then(str => {
-            let parser = new DOMParser();
-            let xml = parser.parseFromString(str, "text/xml");
-            let count = xml.getElementsByTagName("fullcount")[0].textContent;
-            speak(`You have ${count} unread emails.`);
-        })
-        .catch(error => {
-            console.error("Error fetching unread emails:", error);
-            speak("Unable to check unread emails.");
-        });
-}
-
+// Text-to-Speech function
 function speak(text) {
     console.log("Speaking:", text);
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "en-US";
     speechSynthesis.speak(utterance);
 }
-
-startWakeWordDetection();
