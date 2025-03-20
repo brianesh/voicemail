@@ -6,25 +6,41 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         listeningStatus = "ON";
 
         // Notify popup
-        chrome.runtime.sendMessage({ action: "updateStatus", status: listeningStatus });
+        chrome.runtime.sendMessage({ action: "updateStatus", status: listeningStatus }, () => {
+            if (chrome.runtime.lastError) {
+                console.error("Error sending message:", chrome.runtime.lastError.message);
+            }
+        });
 
         // Start recognition in the active tab
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs.length > 0) {
-                chrome.tabs.sendMessage(tabs[0].id, { action: "startRecognition" });
+                chrome.tabs.sendMessage(tabs[0].id, { action: "startRecognition" }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        console.error("Error sending message:", chrome.runtime.lastError.message);
+                    }
+                });
+            } else {
+                console.warn("No active tab found.");
             }
         });
     }
 
     if (message.action === "updateStatus") {
         listeningStatus = message.status;
-        chrome.storage.local.set({ listeningStatus });
-        chrome.runtime.sendMessage({ action: "refreshPopup" });
+        chrome.storage.local.set({ listeningStatus: listeningStatus });
+        chrome.runtime.sendMessage({ action: "refreshPopup" }, () => {
+            if (chrome.runtime.lastError) {
+                console.error("Error sending message:", chrome.runtime.lastError.message);
+            }
+        });
     }
 
     if (message.action === "getStatus") {
         sendResponse({ status: listeningStatus });
     }
+
+    return true; // Keep sendResponse() open for async operations
 });
 
 // Function to start voice recognition
@@ -42,7 +58,11 @@ function startRecognition() {
     recognition.onresult = (event) => {
         let command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
         console.log("Recognized:", command);
-        chrome.runtime.sendMessage({ action: "commandRecognized", command });
+        chrome.runtime.sendMessage({ action: "commandRecognized", command }, () => {
+            if (chrome.runtime.lastError) {
+                console.error("Error sending command:", chrome.runtime.lastError.message);
+            }
+        });
     };
 
     recognition.onerror = (event) => {

@@ -1,3 +1,12 @@
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === "startRecognition") {
+        console.log("Starting voice recognition...");
+        startVoiceRecognition();
+        sendResponse({ status: "Started" });
+    }
+});
+
+// Function to start voice recognition
 function startVoiceRecognition() {
     if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
         console.error("Speech recognition not supported in this browser.");
@@ -11,7 +20,11 @@ function startVoiceRecognition() {
 
     recognition.onstart = () => {
         console.log("Listening...");
-        chrome.runtime.sendMessage({ action: "updateStatus", status: "ON" });
+        chrome.runtime.sendMessage({ action: "updateStatus", status: "ON" }, () => {
+            if (chrome.runtime.lastError) {
+                console.error("Error sending message:", chrome.runtime.lastError.message);
+            }
+        });
     };
 
     recognition.onresult = (event) => {
@@ -22,19 +35,10 @@ function startVoiceRecognition() {
             speakAndOpen("Opening inbox", "inbox");
         } else if (command.includes("open sent")) {
             speakAndOpen("Opening sent emails", "sent");
-        } else if (command.includes("open snoozed")) {
-            speakAndOpen("Opening snoozed emails", "snoozed");
-        } else if (command.includes("open starred")) {
-            speakAndOpen("Opening starred emails", "starred");
         } else {
+            console.log("Unrecognized command.");
             speak("Sorry, I didn't understand that command.");
         }
-    };
-
-    recognition.onend = () => {
-        console.log("Stopped listening. Restarting...");
-        chrome.runtime.sendMessage({ action: "updateStatus", status: "OFF" });
-        setTimeout(() => recognition.start(), 1000);
     };
 
     recognition.onerror = (event) => {
@@ -44,6 +48,7 @@ function startVoiceRecognition() {
     recognition.start();
 }
 
+// Function to open Gmail section
 function speakAndOpen(message, section) {
     speak(message);
     setTimeout(() => openGmailSection(section), 1500);
