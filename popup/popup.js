@@ -1,4 +1,2 @@
-document.getElementById("start").addEventListener("click", () => {
-    chrome.runtime.sendMessage({ command: "startListening" });
-  });
-  
+// When the popup opens, start voice recognition automatically
+chrome.runtime.sendMessage({ command: "startListening" });
