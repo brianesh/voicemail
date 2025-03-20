@@ -1,17 +1,16 @@
-// Check for browser support
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
 if (!SpeechRecognition) {
-    console.error("Speech recognition not supported in this browser.");
+    console.error("Speech recognition not supported.");
 }
 
 const recognition = new SpeechRecognition();
-recognition.continuous = true;  // Keep listening
+recognition.continuous = true;
 recognition.interimResults = false;
 recognition.lang = "en-US";
 
 let isListening = false;
 
-// Start listening for wake word
 function startWakeWordDetection() {
     recognition.start();
     console.log("Listening for 'Hey Email'...");
@@ -31,7 +30,6 @@ recognition.onresult = (event) => {
     }
 };
 
-// Handle errors and restart listening
 recognition.onerror = (event) => {
     console.error("Speech recognition error:", event.error);
     setTimeout(() => recognition.start(), 1000);
@@ -51,6 +49,12 @@ function executeCommand(command) {
         speakAndOpen("Opening snoozed", "snoozed");
     } else if (command.includes("open starred")) {
         speakAndOpen("Opening starred", "starred");
+    } else if (command.includes("compose email")) {
+        speakAndOpen("Composing a new email", "compose");
+    } else if (command.includes("read emails")) {
+        readEmails();
+    } else if (command.includes("check unread emails")) {
+        checkUnreadCount();
     } else {
         speak("Sorry, I didn't understand that.");
     }
@@ -72,6 +76,28 @@ function openGmailSection(section) {
     });
 }
 
+function readEmails() {
+    speak("Reading your latest emails...");
+    let url = "https://mail.google.com/mail/u/0/#inbox";
+    chrome.tabs.create({ url });
+}
+
+function checkUnreadCount() {
+    speak("Checking unread email count...");
+    fetch("https://mail.google.com/mail/feed/atom")
+        .then(response => response.text())
+        .then(str => {
+            let parser = new DOMParser();
+            let xml = parser.parseFromString(str, "text/xml");
+            let count = xml.getElementsByTagName("fullcount")[0].textContent;
+            speak(`You have ${count} unread emails.`);
+        })
+        .catch(error => {
+            console.error("Error fetching unread emails:", error);
+            speak("Unable to check unread emails.");
+        });
+}
+
 function speak(text) {
     console.log("Speaking:", text);
     const utterance = new SpeechSynthesisUtterance(text);
@@ -79,5 +105,4 @@ function speak(text) {
     speechSynthesis.speak(utterance);
 }
 
-// Start listening for the wake word
 startWakeWordDetection();
