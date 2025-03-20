@@ -5,7 +5,7 @@ function startVoiceRecognition() {
     }
 
     const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.continuous = false;
+    recognition.continuous = true; // Keeps listening after first command
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
@@ -15,30 +15,27 @@ function startVoiceRecognition() {
     };
 
     recognition.onresult = (event) => {
-        let command = event.results[0][0].transcript.toLowerCase().trim();
+        let command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
         console.log("You said:", command);
 
+        // Command Processing
         if (command.includes("open inbox")) {
-            speak("Opening inbox");
-            openGmailSection("inbox");
+            speakAndOpen("Opening inbox", "inbox");
         } else if (command.includes("open sent")) {
-            speak("Opening sent emails");
-            openGmailSection("sent");
+            speakAndOpen("Opening sent emails", "sent");
         } else if (command.includes("open snoozed")) {
-            speak("Opening snoozed emails");
-            openGmailSection("snoozed");
+            speakAndOpen("Opening snoozed emails", "snoozed");
         } else if (command.includes("open starred")) {
-            speak("Opening starred emails");
-            openGmailSection("starred");
+            speakAndOpen("Opening starred emails", "starred");
         } else {
-            speak("I didn't understand that command.");
-            console.log("Unknown command:", command);
+            speak("Sorry, I didn't understand.");
         }
     };
 
     recognition.onend = () => {
         console.log("Stopped listening.");
         chrome.runtime.sendMessage({ action: "updateStatus", status: "OFF" });
+        recognition.start(); // Restart listening automatically
     };
 
     recognition.onerror = (event) => {
@@ -46,6 +43,11 @@ function startVoiceRecognition() {
     };
 
     recognition.start();
+}
+
+function speakAndOpen(message, section) {
+    speak(message);
+    setTimeout(() => openGmailSection(section), 1000); // Small delay to let speech finish
 }
 
 function openGmailSection(section) {
