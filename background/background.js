@@ -12,12 +12,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         });
 
-        // Start recognition in the active tab
+        // Ensure content script is injected before sending messages
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs.length > 0) {
-                chrome.tabs.sendMessage(tabs[0].id, { action: "startRecognition" }, (response) => {
+                let tabId = tabs[0].id;
+
+                chrome.scripting.executeScript({
+                    target: { tabId: tabId },
+                    files: ["content.js"]
+                }, () => {
                     if (chrome.runtime.lastError) {
-                        console.error("Error sending message:", chrome.runtime.lastError.message);
+                        console.error("Error injecting script:", chrome.runtime.lastError.message);
+                    } else {
+                        console.log("Content script injected.");
+                        // Now send the message to start recognition
+                        chrome.tabs.sendMessage(tabId, { action: "startRecognition" }, (response) => {
+                            if (chrome.runtime.lastError) {
+                                console.error("Error sending message:", chrome.runtime.lastError.message);
+                            }
+                        });
                     }
                 });
             } else {
@@ -42,33 +55,3 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     return true; // Keep sendResponse() open for async operations
 });
-
-// Function to start voice recognition
-function startRecognition() {
-    if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
-        console.error("Speech recognition not supported.");
-        return;
-    }
-
-    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = "en-US";
-
-    recognition.onresult = (event) => {
-        let command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
-        console.log("Recognized:", command);
-        chrome.runtime.sendMessage({ action: "commandRecognized", command }, () => {
-            if (chrome.runtime.lastError) {
-                console.error("Error sending command:", chrome.runtime.lastError.message);
-            }
-        });
-    };
-
-    recognition.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
-    };
-
-    recognition.start();
-    console.log("Voice recognition started...");
-}
