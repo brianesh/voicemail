@@ -1,5 +1,3 @@
-let recognition; // Global variable to persist recognition instance
-
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "startRecognition") {
         console.log("Starting voice recognition...");
@@ -15,15 +13,18 @@ function startVoiceRecognition() {
         return;
     }
 
-    // Use a global instance to persist recognition
-    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
     recognition.onstart = () => {
         console.log("Listening...");
-        sendRuntimeMessage({ action: "updateStatus", status: "ON" });
+        chrome.runtime.sendMessage({ action: "updateStatus", status: "ON" }, () => {
+            if (chrome.runtime.lastError) {
+                console.error("Error updating status:", chrome.runtime.lastError.message);
+            }
+        });
     };
 
     recognition.onresult = (event) => {
@@ -47,17 +48,6 @@ function startVoiceRecognition() {
     recognition.start();
 }
 
-// Function to send messages safely
-function sendRuntimeMessage(message) {
-    if (chrome.runtime?.id) {
-        chrome.runtime.sendMessage(message, () => {
-            if (chrome.runtime.lastError) {
-                console.warn("Error sending message:", chrome.runtime.lastError.message);
-            }
-        });
-    }
-}
-
 // Function to open Gmail section
 function speakAndOpen(message, section) {
     speak(message);
@@ -67,9 +57,7 @@ function speakAndOpen(message, section) {
 function openGmailSection(section) {
     let url = `https://mail.google.com/mail/u/0/#${section}`;
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (chrome.runtime.lastError) {
-            console.error("Error querying tabs:", chrome.runtime.lastError.message);
-        } else if (tabs.length > 0) {
+        if (tabs.length > 0) {
             chrome.tabs.update(tabs[0].id, { url });
         } else {
             chrome.tabs.create({ url });

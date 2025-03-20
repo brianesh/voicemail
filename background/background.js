@@ -8,43 +8,49 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Notify popup
         chrome.runtime.sendMessage({ action: "updateStatus", status: listeningStatus }, () => {
             if (chrome.runtime.lastError) {
-                console.error("Error sending message:", chrome.runtime.lastError.message);
+                console.error("Error sending message to popup:", chrome.runtime.lastError.message);
             }
         });
 
-        // Ensure content script is injected before sending messages
+        // Ensure an active tab is available
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs.length > 0) {
-                let tabId = tabs[0].id;
-
-                chrome.scripting.executeScript({
-                    target: { tabId: tabId },
-                    files: ["content.js"]
-                }, () => {
-                    if (chrome.runtime.lastError) {
-                        console.error("Error injecting script:", chrome.runtime.lastError.message);
-                    } else {
-                        console.log("Content script injected.");
-                        // Now send the message to start recognition
-                        chrome.tabs.sendMessage(tabId, { action: "startRecognition" }, (response) => {
-                            if (chrome.runtime.lastError) {
-                                console.error("Error sending message:", chrome.runtime.lastError.message);
-                            }
-                        });
-                    }
-                });
-            } else {
+            if (tabs.length === 0) {
                 console.warn("No active tab found.");
+                return;
             }
+
+            let tabId = tabs[0].id;
+
+            // Check if content script is already running
+            chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                files: ["content.js"]
+            }, () => {
+                if (chrome.runtime.lastError) {
+                    console.error("Error injecting content script:", chrome.runtime.lastError.message);
+                } else {
+                    console.log("Content script injected.");
+
+                    // Send message to start recognition
+                    chrome.tabs.sendMessage(tabId, { action: "startRecognition" }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            console.error("Error sending message to content script:", chrome.runtime.lastError.message);
+                        } else {
+                            console.log("Message sent successfully:", response);
+                        }
+                    });
+                }
+            });
         });
     }
 
     if (message.action === "updateStatus") {
         listeningStatus = message.status;
         chrome.storage.local.set({ listeningStatus: listeningStatus });
+        
         chrome.runtime.sendMessage({ action: "refreshPopup" }, () => {
             if (chrome.runtime.lastError) {
-                console.error("Error sending message:", chrome.runtime.lastError.message);
+                console.error("Error updating popup status:", chrome.runtime.lastError.message);
             }
         });
     }
@@ -53,5 +59,5 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ status: listeningStatus });
     }
 
-    return true; // Keep sendResponse() open for async operations
+    return true; // Ensures async sendResponse works
 });
