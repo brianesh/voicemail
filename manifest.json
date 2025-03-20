@@ -20,8 +20,8 @@
     {
       "matches": ["https://mail.google.com/*"],
       "js": [
-        "content/content.js",
         "content/speechRecognition.js",
+        "content/content.js",
         "content/wakeWordDetector.js"
       ],
       "run_at": "document_idle"
