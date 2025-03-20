@@ -19,7 +19,11 @@
   "content_scripts": [
     {
       "matches": ["https://mail.google.com/*"],
-      "js": ["content/content.js"]
+      "js": [
+        "content/content.js",
+        "content/speechRecognition.js",
+        "content/wakeWordDetector.js"
+      ]
     }
   ]
 }
