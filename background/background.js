@@ -11,9 +11,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Start recognition in the active tab
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs.length > 0) {
-                chrome.scripting.executeScript({
-                    target: { tabId: tabs[0].id },
-                    function: startRecognition
+                chrome.tabs.sendMessage(tabs[0].id, { action: "startRecognition" }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        console.error("Error sending message:", chrome.runtime.lastError.message);
+                    }
                 });
             }
         });
