@@ -21,7 +21,7 @@ if (!("webkitSpeechRecognition" in window)) {
 
         if (transcript === "hey email") {
             if (isActive) {
-                recognition.stop(); // Stop listening before speaking
+                recognition.start(); // Stop listening before speaking
                 isActive = false;
             }
 
