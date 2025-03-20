@@ -5,10 +5,12 @@ if (!("webkitSpeechRecognition" in window)) {
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
-    let isListening = true; // Controls if recognition should restart
+    let isListening = true; // Tracks whether recognition should restart
+    let isActive = false; // Tracks if recognition is currently running
 
     recognition.onstart = () => {
         console.log("Listening...");
+        isActive = true;
         chrome.runtime.sendMessage({ action: "updateStatus", status: "ON" });
     };
 
@@ -17,10 +19,12 @@ if (!("webkitSpeechRecognition" in window)) {
         console.log("You said:", transcript);
 
         if (transcript === "hey email") {
-            let utterance = new SpeechSynthesisUtterance("Hello, how can I help you?");
-            speechSynthesis.speak(utterance);
-            isListening = true;
-            recognition.start();
+            if (!isActive) {
+                let utterance = new SpeechSynthesisUtterance("Hello, how can I help you?");
+                speechSynthesis.speak(utterance);
+                isListening = true;
+                recognition.start(); // Restart listening only if it's inactive
+            }
         } 
         else if (transcript === "sleep email") {
             let utterance = new SpeechSynthesisUtterance("Going to sleep.");
@@ -32,11 +36,13 @@ if (!("webkitSpeechRecognition" in window)) {
 
     recognition.onend = () => {
         console.log("Stopped listening.");
+        isActive = false;
         chrome.runtime.sendMessage({ action: "updateStatus", status: "OFF" });
 
-        // Restart recognition if still listening
         if (isListening) {
-            setTimeout(() => recognition.start(), 1000);
+            setTimeout(() => {
+                if (!isActive) recognition.start();
+            }, 1000);
         }
     };
 
