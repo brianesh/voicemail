@@ -1,59 +1,69 @@
-if (!("webkitSpeechRecognition" in window)) {
-    console.error("Speech Recognition not supported in this browser.");
-} else {
-    let recognition = new webkitSpeechRecognition();
+function startVoiceRecognition() {
+    if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+        console.error("Speech recognition not supported in this browser.");
+        return;
+    }
+
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
-    let isListening = true; // Controls if recognition should restart
-    let isActive = false; // Tracks if recognition is running
-
     recognition.onstart = () => {
         console.log("Listening...");
-        isActive = true;
         chrome.runtime.sendMessage({ action: "updateStatus", status: "ON" });
     };
 
     recognition.onresult = (event) => {
-        let transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
-        console.log("You said:", transcript);
+        let command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+        console.log("Recognized command:", command);
 
-        if (transcript === "hey email") {
-            if (isActive) {
-                recognition.stop(); // Stop listening before speaking
-                isActive = false;
-            }
-
-            let utterance = new SpeechSynthesisUtterance("Hello, how can I help you?");
-            utterance.onend = () => {
-                if (isListening && !isActive) {
-                    recognition.start(); // Restart recognition only if it's not already running
-                }
-            };
-            speechSynthesis.speak(utterance);
-        } 
-        else if (transcript === "sleep email") {
-            let utterance = new SpeechSynthesisUtterance("Going to sleep.");
-            speechSynthesis.speak(utterance);
-            isListening = false;
-            recognition.stop();
+        if (command.includes("open inbox")) {
+            speakAndOpen("Opening inbox", "inbox");
+        } else if (command.includes("open sent")) {
+            speakAndOpen("Opening sent emails", "sent");
+        } else if (command.includes("open snoozed")) {
+            speakAndOpen("Opening snoozed emails", "snoozed");
+        } else if (command.includes("open starred")) {
+            speakAndOpen("Opening starred emails", "starred");
+        } else {
+            speak("Sorry, I didn't understand that command.");
         }
     };
 
     recognition.onend = () => {
-        console.log("Stopped listening.");
-        isActive = false;
+        console.log("Stopped listening. Restarting...");
         chrome.runtime.sendMessage({ action: "updateStatus", status: "OFF" });
+        setTimeout(() => recognition.start(), 1000);
+    };
 
-        if (isListening) {
-            setTimeout(() => {
-                if (!isActive) { // Ensure it only starts if not already active
-                    recognition.start();
-                }
-            }, 1000);
-        }
+    recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
     };
 
     recognition.start();
+}
+
+function speakAndOpen(message, section) {
+    speak(message);
+    setTimeout(() => openGmailSection(section), 1500);
+}
+
+function openGmailSection(section) {
+    let url = `https://mail.google.com/mail/u/0/#${section}`;
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs.length > 0) {
+            chrome.tabs.update(tabs[0].id, { url });
+        } else {
+            chrome.tabs.create({ url });
+        }
+    });
+}
+
+// Text-to-Speech function
+function speak(text) {
+    console.log("Speaking:", text);
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    speechSynthesis.speak(utterance);
 }

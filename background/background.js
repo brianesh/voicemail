@@ -11,18 +11,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Start recognition in the active tab
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs.length > 0) {
-                chrome.tabs.sendMessage(tabs[0].id, { action: "startRecognition" }, (response) => {
-                    if (chrome.runtime.lastError) {
-                        console.error("Error sending message:", chrome.runtime.lastError.message);
-                    }
-                });
+                chrome.tabs.sendMessage(tabs[0].id, { action: "startRecognition" });
             }
         });
     }
 
     if (message.action === "updateStatus") {
         listeningStatus = message.status;
-        chrome.storage.local.set({ listeningStatus: listeningStatus });
+        chrome.storage.local.set({ listeningStatus });
         chrome.runtime.sendMessage({ action: "refreshPopup" });
     }
 
@@ -35,29 +31,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function startRecognition() {
     if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
         console.error("Speech recognition not supported.");
-        return;let listeningStatus = "OFF";
-
-        chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-            if (message.action === "wakeWordDetected") {
-                console.log("Wake word detected: Hey Email");
-                listeningStatus = "ON";
-        
-                // Notify popup
-                chrome.runtime.sendMessage({ action: "updateStatus", status: listeningStatus });
-        
-                // Send message to content.js to start recognition
-                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                    if (tabs.length > 0) {
-                        chrome.tabs.sendMessage(tabs[0].id, { action: "startRecognition" });
-                    }
-                });
-            }
-        
-            if (message.action === "getStatus") {
-                sendResponse({ status: listeningStatus });
-            }
-        });
-        
+        return;
     }
 
     const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
