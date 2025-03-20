@@ -5,22 +5,16 @@ function startRecognition() {
     }
 
     const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.continuous = true;
+    recognition.continuous = false;
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
     recognition.onresult = (event) => {
-        let command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+        let command = event.results[0][0].transcript.toLowerCase().trim();
         console.log("Recognized:", command);
 
-        // Send the recognized command to background.js
-        chrome.runtime.sendMessage({ action: "commandRecognized", command }, (response) => {
-            if (chrome.runtime.lastError) {
-                console.error("Message sending error:", chrome.runtime.lastError.message);
-            } else {
-                console.log("Command sent to background.js:", command);
-            }
-        });
+        // Send command to background script
+        chrome.runtime.sendMessage({ action: "commandRecognized", command });
     };
 
     recognition.onerror = (event) => {
@@ -31,7 +25,7 @@ function startRecognition() {
     console.log("Voice recognition started...");
 }
 
-// Listen for the wake word "Hey Email"
+// Wake word detection
 const wakeWord = "hey email";
 
 window.onload = function () {
@@ -41,7 +35,7 @@ window.onload = function () {
     wakeRecognition.lang = "en-US";
 
     wakeRecognition.onresult = (event) => {
-        let detectedWord = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+        let detectedWord = event.results[0][0].transcript.toLowerCase().trim();
         console.log("Detected wake word:", detectedWord);
 
         if (detectedWord.includes(wakeWord)) {

@@ -5,7 +5,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.log("Wake word detected: Hey Email");
         listeningStatus = "ON";
 
-        // Notify popup to update status
+        // Notify popup
         chrome.runtime.sendMessage({ action: "updateStatus", status: listeningStatus });
 
         // Start recognition in the active tab
@@ -19,9 +19,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
     }
 
+    if (message.action === "updateStatus") {
+        listeningStatus = message.status;
+    }
+
+    if (message.action === "getStatus") {
+        sendResponse({ status: listeningStatus });
+    }
+
     if (message.action === "commandRecognized") {
         let command = message.command.toLowerCase();
-        console.log("Command received in background.js:", command);
+        console.log("Command recognized:", command);
 
         if (command.includes("open inbox")) {
             chrome.tabs.create({ url: "https://mail.google.com/mail/u/0/#inbox" });
@@ -35,21 +43,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             chrome.tabs.create({ url: "https://mail.google.com/mail/u/0/#all" });
             chrome.runtime.sendMessage({ action: "speak", response: "Opening all emails" });
 
-        } else if (command.includes("sent mail")) {
-            chrome.tabs.create({ url: "https://mail.google.com/mail/u/0/#sent" });
-            chrome.runtime.sendMessage({ action: "speak", response: "Opening sent emails" });
-
-        } else if (command.includes("snoozed emails")) {
-            chrome.tabs.create({ url: "https://mail.google.com/mail/u/0/#snoozed" });
-            chrome.runtime.sendMessage({ action: "speak", response: "Opening snoozed emails" });
-
-        } else if (command.includes("starred emails")) {
-            chrome.tabs.create({ url: "https://mail.google.com/mail/u/0/#starred" });
-            chrome.runtime.sendMessage({ action: "speak", response: "Opening starred emails" });
-
         } else {
-            console.log("Unknown command:", command);
-            chrome.runtime.sendMessage({ action: "speak", response: "Sorry, I didn't understand that" });
+            chrome.runtime.sendMessage({ action: "speak", response: "Sorry, I didn't understand that." });
         }
     }
 });
