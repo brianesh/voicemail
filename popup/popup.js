@@ -1,14 +1,14 @@
 document.addEventListener("DOMContentLoaded", () => {
-    let statusText = document.getElementById("status");
-
     chrome.storage.local.get("listeningStatus", (data) => {
-        statusText.innerText = data.listeningStatus === "ON" ? "Listening: ON" : "Listening: OFF";
+        const statusText = data.listeningStatus === "ON" ? "Listening: ON" : "Listening: OFF";
+        document.getElementById("status").innerText = statusText;
     });
 
     chrome.runtime.onMessage.addListener((request) => {
-        if (request.action === "updateStatus") {
+        if (request.action === "refreshPopup") {
             chrome.storage.local.get("listeningStatus", (data) => {
-                statusText.innerText = data.listeningStatus === "ON" ? "Listening: ON" : "Listening: OFF";
+                const statusText = data.listeningStatus === "ON" ? "Listening: ON" : "Listening: OFF";
+                document.getElementById("status").innerText = statusText;
             });
         }
     });
