@@ -27,9 +27,11 @@ if (!("webkitSpeechRecognition" in window)) {
 
             let utterance = new SpeechSynthesisUtterance("Hello, how can I help you?");
             utterance.onend = () => {
-                if (isListening) {
-                    recognition.start(); // Restart recognition after speaking
-                }
+                setTimeout(() => {
+                    if (isListening && !isActive) {
+                        recognition.start();
+                    }
+                }, 1000);
             };
             speechSynthesis.speak(utterance);
         } 
