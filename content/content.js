@@ -26,6 +26,11 @@ if (!("webkitSpeechRecognition" in window)) {
             }
 
             let utterance = new SpeechSynthesisUtterance("Hello, how can I help you?");
+            utterance.onend = () => {
+                if (isListening && !isActive) {
+                    recognition.start(); // Restart recognition only if it's not already running
+                }
+            };
             speechSynthesis.speak(utterance);
         } 
         else if (transcript === "sleep email") {
@@ -43,7 +48,7 @@ if (!("webkitSpeechRecognition" in window)) {
 
         if (isListening) {
             setTimeout(() => {
-                if (!isActive) {
+                if (!isActive) { // Ensure it only starts if not already active
                     recognition.start();
                 }
             }, 1000);
