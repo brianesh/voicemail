@@ -1,7 +1,7 @@
-chrome.runtime.onMessage.addListener((message) => {
-    if (message.action === "speakText") {
-      let utterance = new SpeechSynthesisUtterance(message.text);
-      speechSynthesis.speak(utterance);
-    }
-  });
+export function speakText(text) {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    utterance.rate = 1;
+    speechSynthesis.speak(utterance);
+  }
   

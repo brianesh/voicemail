@@ -1,2 +1,5 @@
-// When the popup opens, start voice recognition automatically
-chrome.runtime.sendMessage({ command: "startListening" });
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === "updateStatus") {
+        document.getElementById("status").innerText = `Listening: ${message.status}`;
+    }
+});
