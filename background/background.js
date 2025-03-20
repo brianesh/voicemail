@@ -27,3 +27,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ status: listeningStatus });
     }
 });
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "updateStatus") {
+        chrome.storage.local.set({ listeningStatus: request.status });
+        chrome.runtime.sendMessage({ action: "refreshPopup" });
+    }
+});

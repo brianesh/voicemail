@@ -1,11 +1,15 @@
-chrome.runtime.sendMessage({ action: "getStatus" }, (response) => {
-    if (chrome.runtime.lastError) {
-        console.warn("No response from background script:", chrome.runtime.lastError.message);
-        document.getElementById("status").textContent = "Listening: OFF"; 
-        return;
-    }
-    
-    if (response && response.status) {
-        document.getElementById("status").textContent = `Listening: ${response.status}`;
-    }
+document.addEventListener("DOMContentLoaded", () => {
+    chrome.storage.local.get("listeningStatus", (data) => {
+        const statusText = data.listeningStatus === "ON" ? "Listening: ON" : "Listening: OFF";
+        document.getElementById("status").innerText = statusText;
+    });
+
+    chrome.runtime.onMessage.addListener((request) => {
+        if (request.action === "refreshPopup") {
+            chrome.storage.local.get("listeningStatus", (data) => {
+                const statusText = data.listeningStatus === "ON" ? "Listening: ON" : "Listening: OFF";
+                document.getElementById("status").innerText = statusText;
+            });
+        }
+    });
 });
