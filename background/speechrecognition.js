@@ -1,48 +1,67 @@
-import { speakText } from "./texttospeech.js";
+function startVoiceRecognition() {
+    if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+        console.error("Speech recognition not supported in this browser.");
+        return;
+    }
 
-export function startVoiceRecognition() {
-  if (!("webkitSpeechRecognition" in window)) {
-    console.error("Speech recognition not supported.");
-    return;
-  }
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
 
-  const recognition = new webkitSpeechRecognition();
-  recognition.continuous = false;
-  recognition.lang = "en-US";
+    recognition.onstart = () => {
+        console.log("Listening...");
+        chrome.runtime.sendMessage({ action: "updateStatus", status: "ON" });
+    };
 
-  recognition.onstart = () => {
-    console.log("Listening for commands...");
-  };
+    recognition.onresult = (event) => {
+        let command = event.results[0][0].transcript.toLowerCase().trim();
+        console.log("You said:", command);
 
-  recognition.onresult = (event) => {
-    const command = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
-    console.log("Command:", command);
-    handleCommand(command);
-  };
+        if (command.includes("open inbox")) {
+            speak("Opening inbox");
+            openGmailSection("inbox");
+        } else if (command.includes("open sent")) {
+            speak("Opening sent emails");
+            openGmailSection("sent");
+        } else if (command.includes("open snoozed")) {
+            speak("Opening snoozed emails");
+            openGmailSection("snoozed");
+        } else if (command.includes("open starred")) {
+            speak("Opening starred emails");
+            openGmailSection("starred");
+        } else {
+            speak("I didn't understand that command.");
+            console.log("Unknown command:", command);
+        }
+    };
 
-  recognition.onerror = (event) => {
-    console.error("Error:", event.error);
-    speakText("I didn't catch that. Please try again.");
-  };
+    recognition.onend = () => {
+        console.log("Stopped listening.");
+        chrome.runtime.sendMessage({ action: "updateStatus", status: "OFF" });
+    };
 
-  recognition.onend = () => {
-    console.log("Voice recognition stopped.");
-  };
+    recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+    };
 
-  recognition.start();
+    recognition.start();
 }
 
-function handleCommand(command) {
-  if (command.includes("compose email")) {
-    speakText("Opening Gmail to compose a new email.");
-    chrome.tabs.create({ url: "https://mail.google.com/mail/u/0/#inbox?compose=new" });
-  } else if (command.includes("read emails")) {
-    speakText("Fetching your latest unread emails.");
-    chrome.runtime.sendMessage({ action: "fetchEmails" });
-  } else if (command.includes("log out")) {
-    speakText("Logging you out of Gmail.");
-    chrome.tabs.create({ url: "https://accounts.google.com/Logout" });
-  } else {
-    speakText("Sorry, I didn't understand that.");
-  }
+function openGmailSection(section) {
+    let url = `https://mail.google.com/mail/u/0/#${section}`;
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs.length > 0) {
+            chrome.tabs.update(tabs[0].id, { url });
+        } else {
+            chrome.tabs.create({ url });
+        }
+    });
+}
+
+// Text-to-Speech function
+function speak(text) {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    speechSynthesis.speak(utterance);
 }
