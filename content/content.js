@@ -1,30 +1,59 @@
-if (!("webkitSpeechRecognition" in window)) {
-    console.error("Speech Recognition not supported in this browser.");
-} else {
-    let recognition = new webkitSpeechRecognition();
+function startRecognition() {
+    if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+        console.error("Speech recognition not supported.");
+        return;
+    }
+
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
-    recognition.onstart = () => {
-        console.log("Listening...");
-        chrome.runtime.sendMessage({ action: "updateStatus", status: "ON" });
-    };
-
     recognition.onresult = (event) => {
-        let transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
-        console.log("You said:", transcript);
+        let command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+        console.log("Recognized:", command);
 
-        if (transcript === "hey email") {
-            let utterance = new SpeechSynthesisUtterance("Hello, how can I help you?");
-            speechSynthesis.speak(utterance);
-        }
+        // Send the recognized command to background.js
+        chrome.runtime.sendMessage({ action: "commandRecognized", command }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.error("Message sending error:", chrome.runtime.lastError.message);
+            } else {
+                console.log("Command sent to background.js:", command);
+            }
+        });
     };
 
-    recognition.onend = () => {
-        console.log("Stopped listening.");
-        chrome.runtime.sendMessage({ action: "updateStatus", status: "OFF" });
+    recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
     };
 
     recognition.start();
+    console.log("Voice recognition started...");
 }
+
+// Listen for the wake word "Hey Email"
+const wakeWord = "hey email";
+
+window.onload = function () {
+    const wakeRecognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    wakeRecognition.continuous = true;
+    wakeRecognition.interimResults = false;
+    wakeRecognition.lang = "en-US";
+
+    wakeRecognition.onresult = (event) => {
+        let detectedWord = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+        console.log("Detected wake word:", detectedWord);
+
+        if (detectedWord.includes(wakeWord)) {
+            console.log("Wake word detected!");
+            chrome.runtime.sendMessage({ action: "wakeWordDetected" });
+        }
+    };
+
+    wakeRecognition.onerror = (event) => {
+        console.error("Wake recognition error:", event.error);
+    };
+
+    wakeRecognition.start();
+    console.log("Wake word detection started...");
+};
