@@ -45,7 +45,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function executeCommand(transcript) {
-        let lowerTranscript = transcript.toLowerCase();
+        let lowerTranscript = transcript.toLowerCase().trim();
+        console.log("Checking transcript:", lowerTranscript);
+
         const commands = {
             "compose": "https://mail.google.com/mail/u/0/#inbox?compose=new",
             "inbox": "https://mail.google.com/mail/u/0/#inbox",
@@ -59,21 +61,25 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             "important": "https://mail.google.com/mail/u/0/#important"
         };
 
-        for (let keyword in commands) {
-            if (lowerTranscript.includes(keyword)) {
-                showPopup(`Opening ${keyword}...`, "Processing");
-                setTimeout(() => {
-                    let utterance = new SpeechSynthesisUtterance(`Opening ${keyword}`);
-                    speechSynthesis.speak(utterance);
-                }, 500);
+        let matchedCommand = Object.keys(commands).find(keyword => lowerTranscript === keyword);
 
-                setTimeout(() => {
-                    window.open(commands[keyword], "_self");
-                }, 1500); // Small delay to allow speech to complete
+        if (matchedCommand) {
+            console.log(`Command recognized: ${matchedCommand}`);
+            showPopup(`Opening ${matchedCommand}...`, "Processing");
 
-                return;
-            }
+            setTimeout(() => {
+                let utterance = new SpeechSynthesisUtterance(`Opening ${matchedCommand}`);
+                speechSynthesis.speak(utterance);
+            }, 500);
+
+            setTimeout(() => {
+                window.open(commands[matchedCommand], "_self");
+            }, 1500);
+
+            return;
         }
+
+        console.log("Unknown command detected:", lowerTranscript);
         showPopup("Unknown command", "Error");
         setTimeout(() => {
             let unknownUtterance = new SpeechSynthesisUtterance("Sorry, I didn't understand that.");
@@ -94,6 +100,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         if (transcript === "hey email") {
             wakeWordDetected = true;
+            console.log("Wake word detected!");
             setTimeout(() => {
                 let utterance = new SpeechSynthesisUtterance("Hello, how can I help you?");
                 speechSynthesis.speak(utterance);
@@ -103,7 +110,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         if (wakeWordDetected) {
             executeCommand(transcript);
-            wakeWordDetected = false; // Reset wake word after processing command
+            wakeWordDetected = false;
         }
     };
 
@@ -111,7 +118,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         console.error("Speech recognition error:", event.error);
         showPopup("Error detected", "Error");
         if (event.error === "network") {
-            isListening = false; // Stop trying if there's a network error
+            isListening = false;
         }
     };
 
