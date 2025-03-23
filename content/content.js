@@ -1,74 +1,46 @@
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === "startRecognition") {
-        console.log("Starting voice recognition...");
-        startVoiceRecognition();
-        sendResponse({ status: "Started" });
+chrome.runtime.onMessage.addListener((message) => {
+    if (message.action === "updateFloatingPopup") {
+        showFloatingPopup(message.text || "", message.status);
     }
 });
 
-// Function to start voice recognition
-function startVoiceRecognition() {
-    if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
-        console.error("Speech recognition not supported in this browser.");
-        return;
+function showFloatingPopup(text, status) {
+    let popup = document.getElementById("floatingPopup");
+
+    // If popup doesn't exist, create it
+    if (!popup) {
+        popup = document.createElement("div");
+        popup.id = "floatingPopup";
+        document.body.appendChild(popup);
+
+        // Apply styles
+        Object.assign(popup.style, {
+            position: "fixed",
+            bottom: "20px",
+            right: "20px",
+            background: "rgba(0,0,0,0.8)",
+            color: "white",
+            padding: "10px 20px",
+            borderRadius: "8px",
+            fontSize: "16px",
+            zIndex: "10000",
+            opacity: "1",
+            transition: "opacity 0.5s ease-in-out",
+            minWidth: "200px",
+            textAlign: "center"
+        });
     }
 
-    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = "en-US";
+    // Update content
+    popup.innerHTML = `<strong>Listening: ${status}</strong><br>${text}`;
 
-    recognition.onstart = () => {
-        console.log("Listening...");
-        chrome.runtime.sendMessage({ action: "updateStatus", status: "ON" }, () => {
-            if (chrome.runtime.lastError) {
-                console.error("Error updating status:", chrome.runtime.lastError.message);
-            }
-        });
-    };
-
-    recognition.onresult = (event) => {
-        let command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
-        console.log("Recognized command:", command);
-
-        if (command.includes("open inbox")) {
-            speakAndOpen("Opening inbox", "inbox");
-        } else if (command.includes("open sent")) {
-            speakAndOpen("Opening sent emails", "sent");
-        } else {
-            console.log("Unrecognized command.");
-            speak("Sorry, I didn't understand that command.");
-        }
-    };
-
-    recognition.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
-    };
-
-    recognition.start();
-}
-
-// Function to open Gmail section
-function speakAndOpen(message, section) {
-    speak(message);
-    setTimeout(() => openGmailSection(section), 1500);
-}
-
-function openGmailSection(section) {
-    let url = `https://mail.google.com/mail/u/0/#${section}`;
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs.length > 0) {
-            chrome.tabs.update(tabs[0].id, { url });
-        } else {
-            chrome.tabs.create({ url });
-        }
-    });
-}
-
-// Text-to-Speech function
-function speak(text) {
-    console.log("Speaking:", text);
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    speechSynthesis.speak(utterance);
+    // Keep popup visible while status is ON, else hide after 3s
+    if (status === "ON") {
+        popup.style.opacity = "1";
+    } else {
+        setTimeout(() => {
+            popup.style.opacity = "0";
+            setTimeout(() => popup.remove(), 500);
+        }, 3000);
+    }
 }
