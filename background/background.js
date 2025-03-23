@@ -5,14 +5,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.log("Wake word detected: Hey Email");
         listeningStatus = "ON";
 
-        // Notify popup
-        chrome.runtime.sendMessage({ action: "updateStatus", status: listeningStatus }, () => {
-            if (chrome.runtime.lastError) {
-                console.error("Error sending message to popup:", chrome.runtime.lastError.message);
-            }
-        });
+        // Update status without requiring popup to be open
+        chrome.storage.local.set({ listeningStatus: listeningStatus });
 
-        // Ensure an active tab is available
+        // Inject content script only if it's not already injected
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs.length === 0) {
                 console.warn("No active tab found.");
@@ -21,25 +17,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
             let tabId = tabs[0].id;
 
-            // Check if content script is already running
+            // Check if content script is already loaded
             chrome.scripting.executeScript({
                 target: { tabId: tabId },
-                files: ["content.js"]
-            }, () => {
-                if (chrome.runtime.lastError) {
-                    console.error("Error injecting content script:", chrome.runtime.lastError.message);
-                } else {
-                    console.log("Content script injected.");
-
-                    // Send message to start recognition
-                    chrome.tabs.sendMessage(tabId, { action: "startRecognition" }, (response) => {
-                        if (chrome.runtime.lastError) {
-                            console.error("Error sending message to content script:", chrome.runtime.lastError.message);
-                        } else {
-                            console.log("Message sent successfully:", response);
-                        }
-                    });
+                func: () => {
+                    return typeof window.contentScriptLoaded !== "undefined";
                 }
+            }, (result) => {
+                if (chrome.runtime.lastError) {
+                    console.error("Error checking content script:", chrome.runtime.lastError.message);
+                    return;
+                }
+
+                if (result && result[0] && result[0].result) {
+                    console.log("Content script already loaded.");
+                    sendMessageToContent(tabId);
+                    return;
+                }
+
+                // Inject content script if not already loaded
+                chrome.scripting.executeScript({
+                    target: { tabId: tabId },
+                    files: ["content.js"]
+                }, () => {
+                    if (chrome.runtime.lastError) {
+                        console.error("Error injecting content script:", chrome.runtime.lastError.message);
+                    } else {
+                        console.log("Content script injected.");
+                        sendMessageToContent(tabId);
+                    }
+                });
             });
         });
     }
@@ -47,10 +54,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "updateStatus") {
         listeningStatus = message.status;
         chrome.storage.local.set({ listeningStatus: listeningStatus });
-        
+
+        // Only send message if popup exists
         chrome.runtime.sendMessage({ action: "refreshPopup" }, () => {
             if (chrome.runtime.lastError) {
-                console.error("Error updating popup status:", chrome.runtime.lastError.message);
+                console.warn("Popup is not open. Skipping update.");
             }
         });
     }
@@ -61,3 +69,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     return true; // Ensures async sendResponse works
 });
+
+// Function to send a message to content script
+function sendMessageToContent(tabId) {
+    chrome.tabs.sendMessage(tabId, { action: "startRecognition" }, (response) => {
+        if (chrome.runtime.lastError) {
+            console.error("Error sending message to content script:", chrome.runtime.lastError.message);
+        } else {
+            console.log("Message sent successfully:", response);
+        }
+    });
+}
