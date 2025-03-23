@@ -61,9 +61,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         for (let keyword in commands) {
             if (lowerTranscript.includes(keyword)) {
-                let utterance = new SpeechSynthesisUtterance(`Opening ${keyword}`);
-                speechSynthesis.speak(utterance);
                 showPopup(`Opening ${keyword}...`, "Processing");
+                setTimeout(() => {
+                    let utterance = new SpeechSynthesisUtterance(`Opening ${keyword}`);
+                    speechSynthesis.speak(utterance);
+                }, 500);
 
                 setTimeout(() => {
                     window.open(commands[keyword], "_self");
@@ -72,9 +74,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 return;
             }
         }
-        let unknownUtterance = new SpeechSynthesisUtterance("Sorry, I didn't understand that.");
-        speechSynthesis.speak(unknownUtterance);
         showPopup("Unknown command", "Error");
+        setTimeout(() => {
+            let unknownUtterance = new SpeechSynthesisUtterance("Sorry, I didn't understand that.");
+            speechSynthesis.speak(unknownUtterance);
+        }, 500);
     }
 
     recognition.onstart = () => {
@@ -86,19 +90,28 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     recognition.onresult = (event) => {
         let transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
         console.log("You said:", transcript);
-
         showPopup(transcript, "ON");
 
         if (transcript === "hey email") {
             wakeWordDetected = true;
-            let utterance = new SpeechSynthesisUtterance("Hello, how can I help you?");
-            speechSynthesis.speak(utterance);
+            setTimeout(() => {
+                let utterance = new SpeechSynthesisUtterance("Hello, how can I help you?");
+                speechSynthesis.speak(utterance);
+            }, 500);
             return;
         }
 
         if (wakeWordDetected) {
             executeCommand(transcript);
             wakeWordDetected = false; // Reset wake word after processing command
+        }
+    };
+
+    recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        showPopup("Error detected", "Error");
+        if (event.error === "network") {
+            isListening = false; // Stop trying if there's a network error
         }
     };
 
