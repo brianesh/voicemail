@@ -8,8 +8,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     let isListening = true;
     let isActive = false;
+    let wakeWordDetected = false;
 
-    // Create Floating Popup
+    // Floating Popup UI
     const popup = document.createElement("div");
     popup.id = "speech-popup";
     popup.style.cssText = `
@@ -43,6 +44,36 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }, 4000);
     }
 
+    function executeCommand(transcript) {
+        let lowerTranscript = transcript.toLowerCase();
+        const commands = {
+            "compose": "https://mail.google.com/mail/u/0/#inbox?compose=new",
+            "inbox": "https://mail.google.com/mail/u/0/#inbox",
+            "sent": "https://mail.google.com/mail/u/0/#sent",
+            "drafts": "https://mail.google.com/mail/u/0/#drafts",
+            "starred": "https://mail.google.com/mail/u/0/#starred",
+            "snoozed": "https://mail.google.com/mail/u/0/#snoozed",
+            "spam": "https://mail.google.com/mail/u/0/#spam",
+            "trash": "https://mail.google.com/mail/u/0/#trash",
+            "all mail": "https://mail.google.com/mail/u/0/#all",
+            "important": "https://mail.google.com/mail/u/0/#important"
+        };
+
+        for (let keyword in commands) {
+            if (lowerTranscript.includes(keyword)) {
+                let utterance = new SpeechSynthesisUtterance(`Opening ${keyword}`);
+                speechSynthesis.speak(utterance);
+                showPopup(`Opening ${keyword}...`, "Processing");
+                
+                setTimeout(() => {
+                    window.location.href = commands[keyword];
+                }, 2000); // Delayed to allow speech to finish
+
+                return;
+            }
+        }
+    }
+
     recognition.onstart = () => {
         console.log("Listening...");
         isActive = true;
@@ -50,26 +81,24 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     };
 
     recognition.onresult = (event) => {
-        let transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+        let transcript = event.results[event.results.length - 1][0].transcript.trim();
         console.log("You said:", transcript);
 
         showPopup(transcript, "ON");
 
-        if (transcript === "hey email") {
-            if (isActive) {
-                recognition.stop();
-                isActive = false;
-            }
-
+        if (transcript.toLowerCase() === "hey email") {
+            wakeWordDetected = true;
             let utterance = new SpeechSynthesisUtterance("Hello, how can I help you?");
-            utterance.onend = () => {
-                if (isListening && !isActive) {
-                    recognition.start();
-                }
-            };
             speechSynthesis.speak(utterance);
-        } 
-        else if (transcript === "sleep email") {
+            return;
+        }
+
+        if (wakeWordDetected) {
+            executeCommand(transcript);
+            wakeWordDetected = false;
+        }
+
+        if (transcript.toLowerCase().includes("sleep email")) {
             let utterance = new SpeechSynthesisUtterance("Going to sleep.");
             speechSynthesis.speak(utterance);
             isListening = false;
