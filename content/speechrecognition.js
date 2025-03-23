@@ -6,8 +6,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
-    let isListening = true;
-    let isActive = false;
+    let isActive = false; // Start inactive
     let wakeWordDetected = false;
 
     // Floating Popup UI
@@ -45,9 +44,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function executeCommand(transcript) {
-        let lowerTranscript = transcript.toLowerCase().trim();
-        console.log("Checking transcript:", lowerTranscript);
-
+        let lowerTranscript = transcript.toLowerCase();
         const commands = {
             "compose": "https://mail.google.com/mail/u/0/#inbox?compose=new",
             "inbox": "https://mail.google.com/mail/u/0/#inbox",
@@ -61,79 +58,72 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             "important": "https://mail.google.com/mail/u/0/#important"
         };
 
-        let matchedCommand = Object.keys(commands).find(keyword => lowerTranscript === keyword);
-
-        if (matchedCommand) {
-            console.log(`Command recognized: ${matchedCommand}`);
-            showPopup(`Opening ${matchedCommand}...`, "Processing");
-
-            setTimeout(() => {
-                let utterance = new SpeechSynthesisUtterance(`Opening ${matchedCommand}`);
+        for (let keyword in commands) {
+            if (lowerTranscript.includes(keyword)) {
+                showPopup(`Opening ${keyword}...`, "Processing");
+                
+                let utterance = new SpeechSynthesisUtterance(`Opening ${keyword}`);
                 speechSynthesis.speak(utterance);
-            }, 500);
 
-            setTimeout(() => {
-                window.open(commands[matchedCommand], "_self");
-            }, 1500);
-
-            return;
+                setTimeout(() => {
+                    window.open(commands[keyword], "_self");
+                }, 1500); // Delay to allow speech to complete
+                
+                return;
+            }
         }
-
-        console.log("Unknown command detected:", lowerTranscript);
         showPopup("Unknown command", "Error");
-        setTimeout(() => {
-            let unknownUtterance = new SpeechSynthesisUtterance("Sorry, I didn't understand that.");
-            speechSynthesis.speak(unknownUtterance);
-        }, 500);
+        let unknownUtterance = new SpeechSynthesisUtterance("Sorry, I didn't understand that.");
+        speechSynthesis.speak(unknownUtterance);
     }
 
     recognition.onstart = () => {
         console.log("Listening...");
-        isActive = true;
         showPopup("Listening...", "ON");
     };
 
     recognition.onresult = (event) => {
         let transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
         console.log("You said:", transcript);
-        showPopup(transcript, "ON");
+        showPopup(transcript, isActive ? "ON" : "OFF");
 
         if (transcript === "hey email") {
+            isActive = true;
             wakeWordDetected = true;
-            console.log("Wake word detected!");
-            setTimeout(() => {
-                let utterance = new SpeechSynthesisUtterance("Hello, how can I help you?");
-                speechSynthesis.speak(utterance);
-            }, 500);
+            showPopup("Voice Control Activated", "ACTIVE");
+
+            let utterance = new SpeechSynthesisUtterance("Voice control activated. How can I assist?");
+            speechSynthesis.speak(utterance);
             return;
         }
 
-        if (wakeWordDetected) {
-            executeCommand(transcript);
+        if (transcript === "sleep email") {
+            isActive = false;
             wakeWordDetected = false;
+            showPopup("Voice Control Deactivated", "SLEEP");
+
+            let utterance = new SpeechSynthesisUtterance("Voice control deactivated. Say 'Hey email' to reactivate.");
+            speechSynthesis.speak(utterance);
+            return;
+        }
+
+        if (isActive) {
+            executeCommand(transcript);
         }
     };
 
     recognition.onerror = (event) => {
         console.error("Speech recognition error:", event.error);
         showPopup("Error detected", "Error");
-        if (event.error === "network") {
-            isListening = false;
-        }
     };
 
     recognition.onend = () => {
         console.log("Stopped listening.");
-        isActive = false;
         showPopup("Not listening...", "OFF");
 
-        if (isListening) {
-            setTimeout(() => {
-                if (!isActive) {
-                    recognition.start();
-                }
-            }, 1000);
-        }
+        setTimeout(() => {
+            recognition.start();
+        }, 1000);
     };
 
     recognition.start();
