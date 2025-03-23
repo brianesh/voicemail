@@ -6,17 +6,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.storage.local.set({ listeningStatus });
 
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs.length === 0) return;
-            let tabId = tabs[0].id;
-            chrome.tabs.sendMessage(tabId, { action: "updateFloatingPopup", status: listeningStatus });
+            if (tabs.length > 0) {
+                chrome.tabs.sendMessage(tabs[0].id, {
+                    action: "updateFloatingPopup",
+                    text: "Listening...",
+                    status: listeningStatus
+                });
+            }
         });
     }
 
     if (message.action === "speechRecognized") {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs.length === 0) return;
-            let tabId = tabs[0].id;
-            chrome.tabs.sendMessage(tabId, { action: "updateFloatingPopup", text: message.text, status: listeningStatus });
+            if (tabs.length > 0) {
+                chrome.tabs.sendMessage(tabs[0].id, {
+                    action: "updateFloatingPopup",
+                    text: message.text,
+                    status: listeningStatus
+                });
+            }
         });
     }
 
@@ -25,9 +33,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.storage.local.set({ listeningStatus });
 
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs.length === 0) return;
-            let tabId = tabs[0].id;
-            chrome.tabs.sendMessage(tabId, { action: "updateFloatingPopup", status: listeningStatus });
+            if (tabs.length > 0) {
+                chrome.tabs.sendMessage(tabs[0].id, {
+                    action: "updateFloatingPopup",
+                    text: "Stopped listening",
+                    status: listeningStatus
+                });
+            }
         });
     }
 });

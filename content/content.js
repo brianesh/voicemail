@@ -1,13 +1,13 @@
 chrome.runtime.onMessage.addListener((message) => {
     if (message.action === "updateFloatingPopup") {
-        showFloatingPopup(message.text || "", message.status);
+        showFloatingPopup(message.text, message.status);
     }
 });
 
 function showFloatingPopup(text, status) {
     let popup = document.getElementById("floatingPopup");
 
-    // If popup doesn't exist, create it
+    // If the popup doesn't exist, create it
     if (!popup) {
         popup = document.createElement("div");
         popup.id = "floatingPopup";
@@ -18,26 +18,26 @@ function showFloatingPopup(text, status) {
             position: "fixed",
             bottom: "20px",
             right: "20px",
-            background: "rgba(0,0,0,0.8)",
-            color: "white",
-            padding: "10px 20px",
+            background: "rgba(0, 0, 0, 0.9)",
+            color: "#fff",
+            padding: "12px 18px",
             borderRadius: "8px",
             fontSize: "16px",
-            zIndex: "10000",
+            fontFamily: "Arial, sans-serif",
+            zIndex: "9999",
             opacity: "1",
-            transition: "opacity 0.5s ease-in-out",
-            minWidth: "200px",
-            textAlign: "center"
+            transition: "opacity 0.3s ease-in-out",
+            minWidth: "220px",
+            textAlign: "center",
+            boxShadow: "0px 4px 10px rgba(0,0,0,0.3)"
         });
     }
 
-    // Update content
-    popup.innerHTML = `<strong>Listening: ${status}</strong><br>${text}`;
+    // Update content dynamically
+    popup.innerHTML = `<strong>${status === "ON" ? "🎤 Listening..." : "🛑 Stopped"}</strong><br>${text}`;
 
-    // Keep popup visible while status is ON, else hide after 3s
-    if (status === "ON") {
-        popup.style.opacity = "1";
-    } else {
+    // If listening stops, fade out and remove
+    if (status === "OFF") {
         setTimeout(() => {
             popup.style.opacity = "0";
             setTimeout(() => popup.remove(), 500);
