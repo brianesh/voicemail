@@ -45,32 +45,27 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     // Function to calculate Levenshtein Distance
     function levenshteinDistance(a, b) {
-        let tmp;
         if (a.length === 0) return b.length;
         if (b.length === 0) return a.length;
-        if (a.length > b.length) { tmp = a; a = b; b = tmp; }
+        let matrix = [];
+        for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+        for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
 
-        let row = Array(a.length + 1).fill(0).map((_, i) => i);
         for (let i = 1; i <= b.length; i++) {
-            let prev = i;
             for (let j = 1; j <= a.length; j++) {
-                let val;
-                if (b[i - 1] === a[j - 1]) {
-                    val = row[j - 1];
-                } else {
-                    val = Math.min(row[j - 1] + 1, prev + 1, row[j] + 1);
-                }
-                row[j - 1] = prev;
-                prev = val;
+                let cost = b[i - 1] === a[j - 1] ? 0 : 1;
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j - 1] + cost
+                );
             }
-            row[a.length] = prev;
         }
-        return row[a.length];
+        return matrix[b.length][a.length];
     }
 
-    // Function to check for closest match
     function findClosestMatch(input, commands) {
-        let threshold = 2; // Allow minor mistakes (2-letter difference)
+        let threshold = 2; 
         let bestMatch = null;
         let bestScore = Infinity;
 
@@ -84,7 +79,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         return bestMatch;
     }
 
-    // Function to execute a command
     function executeCommand(transcript) {
         let lowerTranscript = transcript.toLowerCase();
         const commands = {
@@ -103,21 +97,24 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         let matchedCommand = findClosestMatch(lowerTranscript, commands);
         if (matchedCommand) {
             showPopup(`Opening ${matchedCommand}...`, "Processing");
-
             let utterance = new SpeechSynthesisUtterance(`Opening ${matchedCommand}`);
             speechSynthesis.speak(utterance);
-
             setTimeout(() => {
                 window.open(commands[matchedCommand], "_self");
             }, 1500);
         } else {
-            showPopup("Unknown command", "Error");
-            let unknownUtterance = new SpeechSynthesisUtterance("Sorry, I didn't understand that.");
+            let responses = [
+                "I didn't catch that. Could you try again?",
+                "Hmm, I'm not sure what you meant. Can you say it differently?",
+                "I didn't understand. Try saying the command more clearly."
+            ];
+            let randomResponse = responses[Math.floor(Math.random() * responses.length)];
+            showPopup(randomResponse, "Error");
+            let unknownUtterance = new SpeechSynthesisUtterance(randomResponse);
             speechSynthesis.speak(unknownUtterance);
         }
     }
 
-    // Improved Speech Recognition Handling
     recognition.onstart = () => {
         console.log("Listening...");
         showPopup("Listening...", "ON");
@@ -128,7 +125,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         console.log("You said:", transcript);
         showPopup(transcript, isActive ? "ON" : "OFF");
 
-        // Check for wake word using fuzzy matching
         let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
         let closestWakeWord = wakeWords.find(word => levenshteinDistance(transcript, word) <= 2);
         
@@ -136,13 +132,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             isActive = true;
             wakeWordDetected = true;
             showPopup("Voice Control Activated", "ACTIVE");
-
             let utterance = new SpeechSynthesisUtterance("Voice control activated. How can I assist?");
             speechSynthesis.speak(utterance);
             return;
         }
 
-        // Check for sleep command using fuzzy matching
         let sleepCommands = ["sleep email", "stop email", "turn off email"];
         let closestSleepCommand = sleepCommands.find(word => levenshteinDistance(transcript, word) <= 2);
 
@@ -150,7 +144,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             isActive = false;
             wakeWordDetected = false;
             showPopup("Voice Control Deactivated", "SLEEP");
-
             let utterance = new SpeechSynthesisUtterance("Voice control deactivated. Say 'Hey email' to reactivate.");
             speechSynthesis.speak(utterance);
             return;
@@ -169,7 +162,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     recognition.onend = () => {
         console.log("Stopped listening.");
         showPopup("Not listening...", "OFF");
-
         setTimeout(() => {
             recognition.start();
         }, 1000);
