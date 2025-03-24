@@ -43,7 +43,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }, 3000);
     }
 
-    // Function to calculate Levenshtein Distance
+    // Levenshtein Distance for fuzzy matching
     function levenshteinDistance(a, b) {
         if (a.length === 0) return b.length;
         if (b.length === 0) return a.length;
@@ -103,11 +103,15 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 window.open(commands[matchedCommand], "_self");
             }, 1500);
         } else {
+            // Dynamic, non-repeating error messages
             let responses = [
                 "I didn't catch that. Could you try again?",
                 "Hmm, I'm not sure what you meant. Can you say it differently?",
                 "I didn't understand. Try saying the command more clearly."
             ];
+
+            if (!isActive) return; // Prevent unnecessary errors
+
             let randomResponse = responses[Math.floor(Math.random() * responses.length)];
             showPopup(randomResponse, "Error");
             let unknownUtterance = new SpeechSynthesisUtterance(randomResponse);
