@@ -74,24 +74,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         return matrix[b.length][a.length];
     }
 
-    function findClosestMatch(input, commands) {
-        let threshold = 2;
-        let bestMatch = null;
-        let bestScore = Infinity;
-
-        for (let keyword in commands) {
-            let distance = levenshteinDistance(input, keyword);
-            if (distance < bestScore && distance <= threshold) {
-                bestMatch = keyword;
-                bestScore = distance;
-            }
-        }
-        return bestMatch;
-    }
-
     function executeCommand(transcript) {
         let lowerTranscript = transcript.toLowerCase();
-    
+
         // Commands and their variations
         const commandMappings = {
             "compose": ["compose", "new email", "write email"],
@@ -105,7 +90,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             "all mail": ["all mail", "all messages"],
             "important": ["important", "priority emails"]
         };
-    
+
         const urlMappings = {
             "compose": "https://mail.google.com/mail/u/0/#inbox?compose=new",
             "inbox": "https://mail.google.com/mail/u/0/#inbox",
@@ -118,20 +103,17 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             "all mail": "https://mail.google.com/mail/u/0/#all",
             "important": "https://mail.google.com/mail/u/0/#important"
         };
-    
+
         let matchedCommand = null;
-    
+
         // Check if any variation of a command is included in the transcript
         for (let command in commandMappings) {
-            for (let phrase of commandMappings[command]) {
-                if (lowerTranscript.includes(phrase)) {
-                    matchedCommand = command;
-                    break;
-                }
+            if (commandMappings[command].some(phrase => lowerTranscript.includes(phrase))) {
+                matchedCommand = command;
+                break;
             }
-            if (matchedCommand) break;
         }
-    
+
         if (matchedCommand) {
             showPopup(`Opening ${matchedCommand}...`, "Processing");
             speak(`Opening ${matchedCommand}`);
@@ -149,7 +131,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             speak(randomResponse);
         }
     }
-    
+
     recognition.onstart = () => {
         isListening = true;
         console.log("Listening...");
@@ -162,9 +144,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         showPopup(transcript, isActive ? "ON" : "OFF");
 
         let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
-        let closestWakeWord = wakeWords.find(word => levenshteinDistance(transcript, word) <= 2);
+        let sleepCommands = ["sleep email", "stop email", "turn off email"];
 
-        if (closestWakeWord) {
+        // Wake Word Detection
+        if (wakeWords.some(word => levenshteinDistance(transcript, word) <= 2)) {
             isActive = true;
             wakeWordDetected = true;
             showPopup("Voice Control Activated", "ACTIVE");
@@ -172,10 +155,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return;
         }
 
-        let sleepCommands = ["sleep email", "stop email", "turn off email"];
-        let closestSleepCommand = sleepCommands.find(word => levenshteinDistance(transcript, word) <= 2);
-
-        if (closestSleepCommand) {
+        // Sleep Command Detection
+        if (sleepCommands.some(word => levenshteinDistance(transcript, word) <= 2)) {
             isActive = false;
             wakeWordDetected = false;
             showPopup("Voice Control Deactivated", "SLEEP");
