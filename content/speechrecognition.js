@@ -6,7 +6,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
-    let isActive = false; // Start inactive
+    let isActive = false; // Voice control initially off
     let wakeWordDetected = false;
 
     // Floating Popup UI
@@ -43,6 +43,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }, 3000);
     }
 
+    function speakMessage(message) {
+        let utterance = new SpeechSynthesisUtterance(message);
+        speechSynthesis.speak(utterance);
+    }
+
     function executeCommand(transcript) {
         let lowerTranscript = transcript.toLowerCase();
         const commands = {
@@ -61,20 +66,78 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         for (let keyword in commands) {
             if (lowerTranscript.includes(keyword)) {
                 showPopup(`Opening ${keyword}...`, "Processing");
-                
-                let utterance = new SpeechSynthesisUtterance(`Opening ${keyword}`);
-                speechSynthesis.speak(utterance);
-
+                speakMessage(`Opening ${keyword}`);
                 setTimeout(() => {
                     window.open(commands[keyword], "_self");
-                }, 1500); // Delay to allow speech to complete
-                
+                }, 1500);
                 return;
             }
         }
+
+        if (lowerTranscript.includes("read emails")) {
+            readEmails();
+            return;
+        }
+
+        if (lowerTranscript.includes("read unread emails")) {
+            readEmails(true);
+            return;
+        }
+
+        if (lowerTranscript.includes("next email")) {
+            triggerKey("j"); // Move to next email
+            return;
+        }
+
+        if (lowerTranscript.includes("previous email")) {
+            triggerKey("k"); // Move to previous email
+            return;
+        }
+
+        if (lowerTranscript.includes("open email")) {
+            triggerKey("o"); // Open email
+            return;
+        }
+
+        if (lowerTranscript.includes("reply email")) {
+            triggerKey("r"); // Reply
+            return;
+        }
+
+        if (lowerTranscript.includes("delete email")) {
+            triggerKey("#"); // Delete
+            return;
+        }
+
         showPopup("Unknown command", "Error");
-        let unknownUtterance = new SpeechSynthesisUtterance("Sorry, I didn't understand that.");
-        speechSynthesis.speak(unknownUtterance);
+        speakMessage("Sorry, I didn't understand that.");
+    }
+
+    function triggerKey(key) {
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: key, bubbles: true }));
+    }
+
+    function readEmails(unreadOnly = false) {
+        let emailList = document.querySelectorAll("tr.zA"); // Gmail email rows
+        let emailSubjects = [];
+
+        emailList.forEach((email) => {
+            let isUnread = email.classList.contains("zE"); // Unread emails have the "zE" class
+            let subject = email.querySelector(".bog")?.innerText || "No subject";
+
+            if (!unreadOnly || isUnread) {
+                emailSubjects.push(subject);
+            }
+        });
+
+        if (emailSubjects.length === 0) {
+            speakMessage(unreadOnly ? "No unread emails found." : "No emails found.");
+            showPopup("No emails found.", "Error");
+        } else {
+            let emailText = emailSubjects.join(". Next email. ");
+            speakMessage(`You have ${emailSubjects.length} emails. ${emailText}`);
+            showPopup("Reading emails...", "Processing");
+        }
     }
 
     recognition.onstart = () => {
@@ -91,9 +154,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             isActive = true;
             wakeWordDetected = true;
             showPopup("Voice Control Activated", "ACTIVE");
-
-            let utterance = new SpeechSynthesisUtterance("Voice control activated. How can I assist?");
-            speechSynthesis.speak(utterance);
+            speakMessage("Voice control activated. How can I assist?");
             return;
         }
 
@@ -101,9 +162,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             isActive = false;
             wakeWordDetected = false;
             showPopup("Voice Control Deactivated", "SLEEP");
-
-            let utterance = new SpeechSynthesisUtterance("Voice control deactivated. Say 'Hey email' to reactivate.");
-            speechSynthesis.speak(utterance);
+            speakMessage("Voice control deactivated. Say 'Hey email' to reactivate.");
             return;
         }
 
@@ -120,7 +179,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     recognition.onend = () => {
         console.log("Stopped listening.");
         showPopup("Not listening...", "OFF");
-
         setTimeout(() => {
             recognition.start();
         }, 1000);
