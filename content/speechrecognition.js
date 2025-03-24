@@ -91,7 +91,22 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     function executeCommand(transcript) {
         let lowerTranscript = transcript.toLowerCase();
-        const commands = {
+    
+        // Commands and their variations
+        const commandMappings = {
+            "compose": ["compose", "new email", "write email"],
+            "inbox": ["inbox", "open inbox", "go to inbox", "check inbox"],
+            "sent": ["sent", "sent mail", "sent messages"],
+            "drafts": ["drafts", "draft", "saved emails"],
+            "starred": ["starred", "important emails"],
+            "snoozed": ["snoozed", "snooze emails"],
+            "spam": ["spam", "junk mail"],
+            "trash": ["trash", "deleted emails"],
+            "all mail": ["all mail", "all messages"],
+            "important": ["important", "priority emails"]
+        };
+    
+        const urlMappings = {
             "compose": "https://mail.google.com/mail/u/0/#inbox?compose=new",
             "inbox": "https://mail.google.com/mail/u/0/#inbox",
             "sent": "https://mail.google.com/mail/u/0/#sent",
@@ -103,13 +118,25 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             "all mail": "https://mail.google.com/mail/u/0/#all",
             "important": "https://mail.google.com/mail/u/0/#important"
         };
-
-        let matchedCommand = findClosestMatch(lowerTranscript, commands);
+    
+        let matchedCommand = null;
+    
+        // Check if any variation of a command is included in the transcript
+        for (let command in commandMappings) {
+            for (let phrase of commandMappings[command]) {
+                if (lowerTranscript.includes(phrase)) {
+                    matchedCommand = command;
+                    break;
+                }
+            }
+            if (matchedCommand) break;
+        }
+    
         if (matchedCommand) {
             showPopup(`Opening ${matchedCommand}...`, "Processing");
             speak(`Opening ${matchedCommand}`);
             setTimeout(() => {
-                window.open(commands[matchedCommand], "_self");
+                window.open(urlMappings[matchedCommand], "_self");
             }, 1500);
         } else {
             let responses = [
@@ -117,13 +144,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 "Hmm, I'm not sure what you meant. Can you say it differently?",
                 "I didn't understand. Try saying the command more clearly."
             ];
-            if (!isActive) return;
             let randomResponse = responses[Math.floor(Math.random() * responses.length)];
             showPopup(randomResponse, "Error");
             speak(randomResponse);
         }
     }
-
+    
     recognition.onstart = () => {
         isListening = true;
         console.log("Listening...");
