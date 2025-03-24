@@ -6,8 +6,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
-    let isActive = false; // Voice control initially off
+    let isActive = false; // Start inactive
     let wakeWordDetected = false;
+    let lastSpoken = ""; // Store last spoken message to avoid repetition
 
     // Floating Popup UI
     const popup = document.createElement("div");
@@ -44,8 +45,14 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function speakMessage(message) {
-        let utterance = new SpeechSynthesisUtterance(message);
-        speechSynthesis.speak(utterance);
+        if (lastSpoken !== message) {
+            lastSpoken = message;
+            let utterance = new SpeechSynthesisUtterance(message);
+            utterance.onend = () => {
+                lastSpoken = ""; // Reset after speaking
+            };
+            speechSynthesis.speak(utterance);
+        }
     }
 
     function executeCommand(transcript) {
@@ -67,6 +74,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             if (lowerTranscript.includes(keyword)) {
                 showPopup(`Opening ${keyword}...`, "Processing");
                 speakMessage(`Opening ${keyword}`);
+
                 setTimeout(() => {
                     window.open(commands[keyword], "_self");
                 }, 1500);
@@ -74,70 +82,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             }
         }
 
-        if (lowerTranscript.includes("read emails")) {
-            readEmails();
-            return;
-        }
-
-        if (lowerTranscript.includes("read unread emails")) {
-            readEmails(true);
-            return;
-        }
-
-        if (lowerTranscript.includes("next email")) {
-            triggerKey("j"); // Move to next email
-            return;
-        }
-
-        if (lowerTranscript.includes("previous email")) {
-            triggerKey("k"); // Move to previous email
-            return;
-        }
-
-        if (lowerTranscript.includes("open email")) {
-            triggerKey("o"); // Open email
-            return;
-        }
-
-        if (lowerTranscript.includes("reply email")) {
-            triggerKey("r"); // Reply
-            return;
-        }
-
-        if (lowerTranscript.includes("delete email")) {
-            triggerKey("#"); // Delete
-            return;
-        }
-
+        // Prevent repeating unknown command message
         showPopup("Unknown command", "Error");
         speakMessage("Sorry, I didn't understand that.");
-    }
-
-    function triggerKey(key) {
-        document.dispatchEvent(new KeyboardEvent("keydown", { key: key, bubbles: true }));
-    }
-
-    function readEmails(unreadOnly = false) {
-        let emailList = document.querySelectorAll("tr.zA"); // Gmail email rows
-        let emailSubjects = [];
-
-        emailList.forEach((email) => {
-            let isUnread = email.classList.contains("zE"); // Unread emails have the "zE" class
-            let subject = email.querySelector(".bog")?.innerText || "No subject";
-
-            if (!unreadOnly || isUnread) {
-                emailSubjects.push(subject);
-            }
-        });
-
-        if (emailSubjects.length === 0) {
-            speakMessage(unreadOnly ? "No unread emails found." : "No emails found.");
-            showPopup("No emails found.", "Error");
-        } else {
-            let emailText = emailSubjects.join(". Next email. ");
-            speakMessage(`You have ${emailSubjects.length} emails. ${emailText}`);
-            showPopup("Reading emails...", "Processing");
-        }
     }
 
     recognition.onstart = () => {
@@ -179,6 +126,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     recognition.onend = () => {
         console.log("Stopped listening.");
         showPopup("Not listening...", "OFF");
+
         setTimeout(() => {
             recognition.start();
         }, 1000);
