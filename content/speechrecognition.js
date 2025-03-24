@@ -1,14 +1,16 @@
 if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
     console.error("Speech Recognition not supported in this browser.");
 } else {
-    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
     let isActive = false;
     let wakeWordDetected = false;
-    let lastSpoken = ""; // Prevent repeated speech detection
+    let isListening = false;
 
     // Floating Popup UI
     const popup = document.createElement("div");
@@ -44,11 +46,18 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }, 3000);
     }
 
+    function speak(text) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        speechSynthesis.cancel(); // Stop any previous speech before speaking new text
+        speechSynthesis.speak(utterance);
+    }
+
     // Levenshtein Distance for fuzzy matching
     function levenshteinDistance(a, b) {
         if (a.length === 0) return b.length;
         if (b.length === 0) return a.length;
         let matrix = [];
+
         for (let i = 0; i <= b.length; i++) matrix[i] = [i];
         for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
 
@@ -80,13 +89,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         return bestMatch;
     }
 
-    function speak(text) {
-        if (text === lastSpoken) return; // Prevent repeated speech detection
-        lastSpoken = text;
-        let utterance = new SpeechSynthesisUtterance(text);
-        speechSynthesis.speak(utterance);
-    }
-
     function executeCommand(transcript) {
         let lowerTranscript = transcript.toLowerCase();
         const commands = {
@@ -110,14 +112,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 window.open(commands[matchedCommand], "_self");
             }, 1500);
         } else {
-            if (!isActive) return;
-
             let responses = [
                 "I didn't catch that. Could you try again?",
                 "Hmm, I'm not sure what you meant. Can you say it differently?",
                 "I didn't understand. Try saying the command more clearly."
             ];
-
+            if (!isActive) return;
             let randomResponse = responses[Math.floor(Math.random() * responses.length)];
             showPopup(randomResponse, "Error");
             speak(randomResponse);
@@ -125,6 +125,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     recognition.onstart = () => {
+        isListening = true;
         console.log("Listening...");
         showPopup("Listening...", "ON");
     };
@@ -135,9 +136,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         showPopup(transcript, isActive ? "ON" : "OFF");
 
         let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
-        let closestWakeWord = wakeWords.find(word => levenshteinDistance(transcript, word) <= 1);
-        
-        if (closestWakeWord && !isActive) {
+        let closestWakeWord = wakeWords.find(word => levenshteinDistance(transcript, word) <= 2);
+
+        if (closestWakeWord) {
             isActive = true;
             wakeWordDetected = true;
             showPopup("Voice Control Activated", "ACTIVE");
@@ -146,7 +147,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
 
         let sleepCommands = ["sleep email", "stop email", "turn off email"];
-        let closestSleepCommand = sleepCommands.find(word => levenshteinDistance(transcript, word) <= 1);
+        let closestSleepCommand = sleepCommands.find(word => levenshteinDistance(transcript, word) <= 2);
 
         if (closestSleepCommand) {
             isActive = false;
@@ -164,14 +165,24 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     recognition.onerror = (event) => {
         console.error("Speech recognition error:", event.error);
         showPopup("Error detected", "Error");
+        if (event.error === "no-speech" || event.error === "audio-capture") {
+            recognition.stop();
+            setTimeout(() => {
+                recognition.start();
+            }, 3000);
+        }
     };
 
     recognition.onend = () => {
+        isListening = false;
         console.log("Stopped listening.");
         showPopup("Not listening...", "OFF");
-        setTimeout(() => {
-            recognition.start();
-        }, 2000); // Delay restart to prevent infinite loops
+
+        if (wakeWordDetected) {
+            setTimeout(() => {
+                if (!isListening) recognition.start();
+            }, 1000);
+        }
     };
 
     recognition.start();
