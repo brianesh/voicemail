@@ -55,11 +55,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function cleanEmail(transcript) {
-        return transcript
-            .replace(/\s*at\s*/g, "@")   
-            .replace(/\s*dot\s*/g, ".")  
-            .replace(/\s+/g, "")        
-            .toLowerCase();
+        return transcript.replace(/\s*at\s*/g, "@")
+                         .replace(/\s*dot\s*/g, ".")
+                         .replace(/\s+/g, "")
+                         .toLowerCase();
     }
 
     function isValidEmail(email) {
@@ -75,12 +74,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     function handleCompose(transcript) {
         if (!emailDetails.to) {
             let cleanedEmail = cleanEmail(transcript);
-
             if (!isValidEmail(cleanedEmail)) {
                 speak("I didn't understand the email address. Can you spell it out?");
                 return;
             }
-
             emailDetails.to = cleanedEmail;
             showPopup(`Recipient: ${emailDetails.to}`, "Confirming");
             speak(`I heard ${emailDetails.to}. Is that correct? Say yes or no.`);
@@ -168,18 +165,30 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
-    function startRecognitionSafely() {
-        if (!recognitionRunning) {
-            recognitionRunning = true;
-            recognition.start();
-        }
-    }
-
     recognition.onresult = (event) => {
         let result = event.results[event.results.length - 1][0];
         let transcript = result.transcript.trim().toLowerCase();
 
         showPopup(transcript, isActive ? "ON" : "OFF");
+
+        let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
+        let sleepCommands = ["sleep email", "stop email", "turn off email"];
+
+        if (wakeWords.some(word => transcript.includes(word))) {
+            isActive = true;
+            wakeWordDetected = true;
+            showPopup("Voice Control Activated", "ACTIVE");
+            speak("Voice control activated. How can I assist?");
+            return;
+        }
+
+        if (sleepCommands.some(word => transcript.includes(word))) {
+            isActive = false;
+            wakeWordDetected = false;
+            showPopup("Voice Control Deactivated", "SLEEP");
+            speak("Voice control deactivated.");
+            return;
+        }
 
         if (isActive) {
             if (composeMode) {
@@ -188,17 +197,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 executeCommand(transcript);
             }
         }
+
+        recognition.start();
     };
 
-    recognition.onend = () => {
-        recognitionRunning = false;
-        if (isActive) startRecognitionSafely();
-    };
-
-    recognition.onerror = () => {
-        recognitionRunning = false;
-        setTimeout(startRecognitionSafely, 1000);
-    };
-
-    startRecognitionSafely();
+    recognition.onerror = () => recognition.start();
+    recognition.start();
 }
