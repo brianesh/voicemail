@@ -81,10 +81,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         const commands = {
             "compose": ["compose", "new email", "write email"],
             "inbox": ["inbox", "open inbox", "check inbox"],
-            "sent": ["sent mail", "sent messages"],
+            "sent": ["sent mail", "sent", "send", "sent messages"],
             "drafts": ["drafts", "saved emails"],
-            "starred": ["starred", "important emails"],
-            "snoozed": ["snoozed", "snooze emails"],
+            "starred": ["starred", "start", "important emails"],
+            "snoozed": ["snoozed","snooze", "snooze emails"],
             "spam": ["spam", "junk mail"],
             "trash": ["trash", "deleted emails"],
             "all mail": ["all mail", "all messages"],
