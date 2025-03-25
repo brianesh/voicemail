@@ -48,36 +48,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     function speak(text) {
         const utterance = new SpeechSynthesisUtterance(text);
-        speechSynthesis.cancel(); // Stop any previous speech before speaking new text
+        speechSynthesis.cancel();
         speechSynthesis.speak(utterance);
     }
 
-    // Levenshtein Distance for fuzzy matching
-    function levenshteinDistance(a, b) {
-        if (a.length === 0) return b.length;
-        if (b.length === 0) return a.length;
-        let matrix = [];
-
-        for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-        for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-
-        for (let i = 1; i <= b.length; i++) {
-            for (let j = 1; j <= a.length; j++) {
-                let cost = b[i - 1] === a[j - 1] ? 0 : 1;
-                matrix[i][j] = Math.min(
-                    matrix[i - 1][j] + 1,
-                    matrix[i][j - 1] + 1,
-                    matrix[i - 1][j - 1] + cost
-                );
-            }
-        }
-        return matrix[b.length][a.length];
-    }
-
     function executeCommand(transcript) {
-        let lowerTranscript = transcript.toLowerCase();
+        const lowerTranscript = transcript.toLowerCase();
 
-        // Commands and their variations
         const commandMappings = {
             "compose": ["compose", "new email", "write email"],
             "inbox": ["inbox", "open inbox", "go to inbox", "check inbox"],
@@ -106,7 +83,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         let matchedCommand = null;
 
-        // Check if any variation of a command is included in the transcript
         for (let command in commandMappings) {
             if (commandMappings[command].some(phrase => lowerTranscript.includes(phrase))) {
                 matchedCommand = command;
@@ -146,8 +122,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
         let sleepCommands = ["sleep email", "stop email", "turn off email"];
 
-        // Wake Word Detection
-        if (wakeWords.some(word => levenshteinDistance(transcript, word) <= 2)) {
+        if (wakeWords.some(word => transcript.includes(word))) {
             isActive = true;
             wakeWordDetected = true;
             showPopup("Voice Control Activated", "ACTIVE");
@@ -155,8 +130,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return;
         }
 
-        // Sleep Command Detection
-        if (sleepCommands.some(word => levenshteinDistance(transcript, word) <= 2)) {
+        if (sleepCommands.some(word => transcript.includes(word))) {
             isActive = false;
             wakeWordDetected = false;
             showPopup("Voice Control Deactivated", "SLEEP");
@@ -172,11 +146,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     recognition.onerror = (event) => {
         console.error("Speech recognition error:", event.error);
         showPopup("Error detected", "Error");
+
         if (event.error === "no-speech" || event.error === "audio-capture") {
-            recognition.stop();
+            console.warn("No speech detected. Restarting recognition...");
+            isListening = false;
             setTimeout(() => {
-                recognition.start();
-            }, 3000);
+                if (!isListening) startRecognition();
+            }, 2000);
         }
     };
 
@@ -187,10 +163,16 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         if (wakeWordDetected) {
             setTimeout(() => {
-                if (!isListening) recognition.start();
+                if (!isListening) startRecognition();
             }, 1000);
         }
     };
 
-    recognition.start();
+    function startRecognition() {
+        if (!isListening) {
+            recognition.start();
+        }
+    }
+
+    startRecognition();
 }
