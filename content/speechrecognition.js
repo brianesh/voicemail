@@ -11,7 +11,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let isActive = false;
     let wakeWordDetected = false;
     let isListening = false;
-    let lastCommandTime = 0; // Track last executed command time
+    let lastCommandTime = 0;
 
     // Floating Popup UI
     const popup = document.createElement("div");
@@ -49,7 +49,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     function speak(text) {
         const utterance = new SpeechSynthesisUtterance(text);
-        speechSynthesis.cancel(); // Stop any previous speech before speaking new text
+        speechSynthesis.cancel();
         speechSynthesis.speak(utterance);
     }
 
@@ -83,8 +83,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             "inbox": ["inbox", "open inbox", "check inbox"],
             "sent": ["sent mail", "sent", "send", "sent messages"],
             "drafts": ["drafts", "saved emails"],
-            "starred": ["starred", "start", "important emails"],
-            "snoozed": ["snoozed","snooze", "snooze emails"],
+            "starred": ["starred", "important emails"],
+            "snoozed": ["snoozed", "snooze emails"],
             "spam": ["spam", "junk mail"],
             "trash": ["trash", "deleted emails"],
             "all mail": ["all mail", "all messages"],
@@ -114,7 +114,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         if (matchedCommand) {
             let now = Date.now();
-            if (now - lastCommandTime < 2000) return; // Prevent immediate duplicate execution
+            if (now - lastCommandTime < 3000) return; // Prevent duplicate execution
 
             lastCommandTime = now;
             showPopup(`Opening ${matchedCommand}...`, "Processing");
@@ -140,7 +140,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         let transcript = result.transcript.trim().toLowerCase();
         let confidence = result.confidence;
 
-        if (confidence < 0.6) return; // Ignore low-confidence results
+        if (confidence < 0.7) return; // Ignore low-confidence results
 
         console.log("You said:", transcript);
         showPopup(transcript, isActive ? "ON" : "OFF");
@@ -170,7 +170,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     };
 
     recognition.onerror = (event) => {
-        if (event.error === "no-speech") return;
+        if (event.error === "no-speech") {
+            console.warn("No speech detected. Restarting in 2 seconds...");
+            setTimeout(() => {
+                if (!isListening) recognition.start();
+            }, 2000);
+            return;
+        }
         console.error("Speech recognition error:", event.error);
         showPopup("Error detected", "Error");
     };
