@@ -1,4 +1,6 @@
 node_modules/
 .env/
 *.log
-*.zip
+*.zipclient_secret.json
+client_secret.json
+client_secret.json
