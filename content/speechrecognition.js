@@ -12,6 +12,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let wakeWordDetected = false;
     let isListening = false;
     let lastCommandTime = 0;
+    let composeMode = false;
+    let emailDetails = { to: "", subject: "", body: "" };
 
     // Floating Popup UI
     const popup = document.createElement("div");
@@ -53,28 +55,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         speechSynthesis.speak(utterance);
     }
 
-    // Improved fuzzy matching (Levenshtein Distance)
-    function levenshteinDistance(a, b) {
-        if (a.length === 0) return b.length;
-        if (b.length === 0) return a.length;
-        let matrix = [];
-
-        for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-        for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-
-        for (let i = 1; i <= b.length; i++) {
-            for (let j = 1; j <= a.length; j++) {
-                let cost = b[i - 1] === a[j - 1] ? 0 : 1;
-                matrix[i][j] = Math.min(
-                    matrix[i - 1][j] + 1,
-                    matrix[i][j - 1] + 1,
-                    matrix[i - 1][j - 1] + cost
-                );
-            }
-        }
-        return matrix[b.length][a.length];
-    }
-
     function executeCommand(transcript) {
         let lowerTranscript = transcript.toLowerCase().trim();
 
@@ -113,15 +93,22 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
 
         if (matchedCommand) {
-            let now = Date.now();
-            if (now - lastCommandTime < 3000) return; // Prevent duplicate execution
-
-            lastCommandTime = now;
+            lastCommandTime = Date.now();
             showPopup(`Opening ${matchedCommand}...`, "Processing");
             speak(`Opening ${matchedCommand}`);
-            setTimeout(() => {
+
+            if (matchedCommand === "compose") {
+                composeMode = true;
+                setTimeout(() => {
+                    window.open(urls[matchedCommand], "_self");
+                }, 1500);
+
+                setTimeout(() => {
+                    guideUserToCompose();
+                }, 4000); // Wait for Gmail to load
+            } else {
                 window.open(urls[matchedCommand], "_self");
-            }, 1500);
+            }
         } else {
             let responses = ["I didn't catch that. Try again?", "Can you repeat?", "I'm not sure what you meant."];
             let randomResponse = responses[Math.floor(Math.random() * responses.length)];
@@ -130,25 +117,63 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
-    recognition.onstart = () => {
-        isListening = true;
-        showPopup("Listening...", "ON");
-    };
+    function guideUserToCompose() {
+        speak("Who do you want to send the email to?");
+        recognition.start();
+    }
+
+    function handleCompose(transcript) {
+        if (!emailDetails.to) {
+            emailDetails.to = transcript;
+            showPopup(`Recipient: ${emailDetails.to}`, "Next Step");
+            speak("What is the subject of the email?");
+            return;
+        }
+
+        if (!emailDetails.subject) {
+            emailDetails.subject = transcript;
+            showPopup(`Subject: ${emailDetails.subject}`, "Next Step");
+            speak("What is the message?");
+            return;
+        }
+
+        if (!emailDetails.body) {
+            emailDetails.body = transcript;
+            showPopup(`Message: ${emailDetails.body}`, "Filling Email");
+            fillComposeFields();
+            return;
+        }
+    }
+
+    function fillComposeFields() {
+        let composeFields = setInterval(() => {
+            let toField = document.querySelector("textarea[name='to']");
+            let subjectField = document.querySelector("input[name='subjectbox']");
+            let bodyField = document.querySelector("div[aria-label='Message Body']");
+
+            if (toField && subjectField && bodyField) {
+                toField.value = emailDetails.to;
+                subjectField.value = emailDetails.subject;
+                bodyField.innerHTML = emailDetails.body;
+                speak("Your email is ready. Say 'send email' to send.");
+                clearInterval(composeFields);
+            }
+        }, 1000);
+    }
 
     recognition.onresult = (event) => {
         let result = event.results[event.results.length - 1][0];
         let transcript = result.transcript.trim().toLowerCase();
         let confidence = result.confidence;
 
-        if (confidence < 0.7) return; // Ignore low-confidence results
+        if (confidence < 0.7) return;
 
-        console.log("You said:", transcript);
         showPopup(transcript, isActive ? "ON" : "OFF");
 
         let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
         let sleepCommands = ["sleep email", "stop email", "turn off email"];
 
-        if (wakeWords.some(word => levenshteinDistance(transcript, word) <= 2)) {
+        if (wakeWords.some(word => transcript.includes(word))) {
             isActive = true;
             wakeWordDetected = true;
             showPopup("Voice Control Activated", "ACTIVE");
@@ -156,7 +181,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return;
         }
 
-        if (sleepCommands.some(word => levenshteinDistance(transcript, word) <= 2)) {
+        if (sleepCommands.some(word => transcript.includes(word))) {
             isActive = false;
             wakeWordDetected = false;
             showPopup("Voice Control Deactivated", "SLEEP");
@@ -165,28 +190,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
 
         if (isActive) {
-            executeCommand(transcript);
-        }
-    };
-
-    recognition.onerror = (event) => {
-        if (event.error === "no-speech") {
-            console.warn("No speech detected. Restarting in 2 seconds...");
-            setTimeout(() => {
-                if (!isListening) recognition.start();
-            }, 2000);
-            return;
-        }
-        console.error("Speech recognition error:", event.error);
-        showPopup("Error detected", "Error");
-    };
-
-    recognition.onend = () => {
-        isListening = false;
-        if (wakeWordDetected) {
-            setTimeout(() => {
-                if (!isListening) recognition.start();
-            }, 1000);
+            if (composeMode) {
+                handleCompose(transcript);
+            } else {
+                executeCommand(transcript);
+            }
         }
     };
 
