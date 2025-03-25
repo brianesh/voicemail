@@ -4,13 +4,14 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
 
-    recognition.continuous = true;
+    recognition.continuous = false; // Changed to false to prevent multiple starts
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
     let isActive = false;
     let wakeWordDetected = false;
     let composeMode = false;
+    let awaitingConfirmation = false;
     let emailDetails = { to: "", subject: "", body: "" };
 
     // Floating Popup UI
@@ -57,7 +58,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         return transcript
             .replace(/\s*at\s*/g, "@")   // "bmngari21 at gmail.com" → "bmngari21@gmail.com"
             .replace(/\s*dot\s*/g, ".")  // "gmail dot com" → "gmail.com"
-            .replace(/\s+/g, "");        // Remove extra spaces
+            .replace(/\s+/g, "")         // Remove extra spaces
+            .toLowerCase();
     }
 
     function isValidEmail(email) {
@@ -71,6 +73,20 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function handleCompose(transcript) {
+        if (awaitingConfirmation) {
+            if (transcript.includes("yes")) {
+                awaitingConfirmation = false;
+                showPopup("Email confirmed.", "Proceeding");
+                speak("Email confirmed. What is the subject?");
+                return;
+            } else if (transcript.includes("no")) {
+                awaitingConfirmation = false;
+                emailDetails.to = "";
+                speak("Let's try again. Who do you want to send the email to?");
+                return;
+            }
+        }
+
         if (!emailDetails.to) {
             let cleanedEmail = cleanEmail(transcript);
 
@@ -82,6 +98,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             emailDetails.to = cleanedEmail;
             showPopup(`Recipient: ${emailDetails.to}`, "Confirming");
             speak(`I heard ${emailDetails.to}. Is that correct? Say yes or no.`);
+            awaitingConfirmation = true;
             return;
         }
 
@@ -112,7 +129,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 bodyField.innerHTML = emailDetails.body;
                 speak("Your email is ready. Say 'send email' to send.");
                 clearInterval(composeFields);
-                recognition.start();
             }
         }, 1000);
     }
@@ -167,29 +183,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     recognition.onresult = (event) => {
-        let result = event.results[event.results.length - 1][0];
-        let transcript = result.transcript.trim().toLowerCase();
-
+        let transcript = event.results[0][0].transcript.trim().toLowerCase();
         showPopup(transcript, isActive ? "ON" : "OFF");
-
-        let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
-        let sleepCommands = ["sleep email", "stop email", "turn off email"];
-
-        if (wakeWords.some(word => transcript.includes(word))) {
-            isActive = true;
-            wakeWordDetected = true;
-            showPopup("Voice Control Activated", "ACTIVE");
-            speak("Voice control activated. How can I assist?");
-            return;
-        }
-
-        if (sleepCommands.some(word => transcript.includes(word))) {
-            isActive = false;
-            wakeWordDetected = false;
-            showPopup("Voice Control Deactivated", "SLEEP");
-            speak("Voice control deactivated.");
-            return;
-        }
 
         if (isActive) {
             if (composeMode) {
@@ -198,10 +193,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 executeCommand(transcript);
             }
         }
-
-        recognition.start();
     };
 
-    recognition.onerror = () => recognition.start();
+    recognition.onerror = () => recognition.stop();
     recognition.start();
 }
