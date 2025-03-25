@@ -10,8 +10,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     let isActive = false;
     let wakeWordDetected = false;
-    let isListening = false;
-    let lastCommandTime = 0;
     let composeMode = false;
     let emailDetails = { to: "", subject: "", body: "" };
 
@@ -55,66 +53,16 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         speechSynthesis.speak(utterance);
     }
 
-    function executeCommand(transcript) {
-        let lowerTranscript = transcript.toLowerCase().trim();
+    function cleanEmail(transcript) {
+        return transcript
+            .replace(/\s*at\s*/g, "@")   // "bmngari21 at gmail.com" → "bmngari21@gmail.com"
+            .replace(/\s*dot\s*/g, ".")  // "gmail dot com" → "gmail.com"
+            .replace(/\s+/g, "");        // Remove extra spaces
+    }
 
-        const commands = {
-            "compose": ["compose", "new email", "write email"],
-            "inbox": ["inbox", "open inbox", "check inbox"],
-            "sent": ["sent mail", "sent", "send", "sent messages"],
-            "drafts": ["drafts", "saved emails"],
-            "starred": ["starred", "important emails"],
-            "snoozed": ["snoozed", "snooze emails"],
-            "spam": ["spam", "junk mail"],
-            "trash": ["trash", "deleted emails"],
-            "all mail": ["all mail", "all messages"],
-            "important": ["important", "priority emails"]
-        };
-
-        const urls = {
-            "compose": "https://mail.google.com/mail/u/0/#inbox?compose=new",
-            "inbox": "https://mail.google.com/mail/u/0/#inbox",
-            "sent": "https://mail.google.com/mail/u/0/#sent",
-            "drafts": "https://mail.google.com/mail/u/0/#drafts",
-            "starred": "https://mail.google.com/mail/u/0/#starred",
-            "snoozed": "https://mail.google.com/mail/u/0/#snoozed",
-            "spam": "https://mail.google.com/mail/u/0/#spam",
-            "trash": "https://mail.google.com/mail/u/0/#trash",
-            "all mail": "https://mail.google.com/mail/u/0/#all",
-            "important": "https://mail.google.com/mail/u/0/#important"
-        };
-
-        let matchedCommand = null;
-        for (let command in commands) {
-            if (commands[command].some(phrase => lowerTranscript.includes(phrase))) {
-                matchedCommand = command;
-                break;
-            }
-        }
-
-        if (matchedCommand) {
-            lastCommandTime = Date.now();
-            showPopup(`Opening ${matchedCommand}...`, "Processing");
-            speak(`Opening ${matchedCommand}`);
-
-            if (matchedCommand === "compose") {
-                composeMode = true;
-                setTimeout(() => {
-                    window.open(urls[matchedCommand], "_self");
-                }, 1500);
-
-                setTimeout(() => {
-                    guideUserToCompose();
-                }, 4000); // Wait for Gmail to load
-            } else {
-                window.open(urls[matchedCommand], "_self");
-            }
-        } else {
-            let responses = ["I didn't catch that. Try again?", "Can you repeat?", "I'm not sure what you meant."];
-            let randomResponse = responses[Math.floor(Math.random() * responses.length)];
-            showPopup(randomResponse, "Error");
-            speak(randomResponse);
-        }
+    function isValidEmail(email) {
+        let emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        return emailPattern.test(email);
     }
 
     function guideUserToCompose() {
@@ -124,9 +72,16 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     function handleCompose(transcript) {
         if (!emailDetails.to) {
-            emailDetails.to = transcript;
-            showPopup(`Recipient: ${emailDetails.to}`, "Next Step");
-            speak("What is the subject of the email?");
+            let cleanedEmail = cleanEmail(transcript);
+
+            if (!isValidEmail(cleanedEmail)) {
+                speak("I didn't understand the email address. Can you spell it out?");
+                return;
+            }
+
+            emailDetails.to = cleanedEmail;
+            showPopup(`Recipient: ${emailDetails.to}`, "Confirming");
+            speak(`I heard ${emailDetails.to}. Is that correct? Say yes or no.`);
             return;
         }
 
@@ -157,16 +112,63 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 bodyField.innerHTML = emailDetails.body;
                 speak("Your email is ready. Say 'send email' to send.");
                 clearInterval(composeFields);
+                recognition.start();
             }
         }, 1000);
+    }
+
+    function executeCommand(transcript) {
+        let lowerTranscript = transcript.toLowerCase().trim();
+
+        const commands = {
+            "compose": ["compose", "new email", "write email"],
+            "inbox": ["inbox", "open inbox", "check inbox"],
+            "sent": ["sent mail", "sent", "send", "sent messages"],
+            "drafts": ["drafts", "saved emails"],
+            "starred": ["starred", "important emails"],
+            "snoozed": ["snoozed", "snooze emails"],
+            "spam": ["spam", "junk mail"],
+            "trash": ["trash", "deleted emails"],
+            "all mail": ["all mail", "all messages"],
+            "important": ["important", "priority emails"]
+        };
+
+        const urls = {
+            "compose": "https://mail.google.com/mail/u/0/#inbox?compose=new",
+            "inbox": "https://mail.google.com/mail/u/0/#inbox",
+            "sent": "https://mail.google.com/mail/u/0/#sent",
+            "drafts": "https://mail.google.com/mail/u/0/#drafts",
+            "starred": "https://mail.google.com/mail/u/0/#starred",
+            "snoozed": "https://mail.google.com/mail/u/0/#snoozed",
+            "spam": "https://mail.google.com/mail/u/0/#spam",
+            "trash": "https://mail.google.com/mail/u/0/#trash",
+            "all mail": "https://mail.google.com/mail/u/0/#all",
+            "important": "https://mail.google.com/mail/u/0/#important"
+        };
+
+        let matchedCommand = Object.keys(commands).find(command =>
+            commands[command].some(phrase => lowerTranscript.includes(phrase))
+        );
+
+        if (matchedCommand) {
+            showPopup(`Opening ${matchedCommand}...`, "Processing");
+            speak(`Opening ${matchedCommand}`);
+
+            if (matchedCommand === "compose") {
+                composeMode = true;
+                window.open(urls[matchedCommand], "_self");
+                setTimeout(guideUserToCompose, 4000);
+            } else {
+                window.open(urls[matchedCommand], "_self");
+            }
+        } else {
+            speak("I didn't catch that. Try again?");
+        }
     }
 
     recognition.onresult = (event) => {
         let result = event.results[event.results.length - 1][0];
         let transcript = result.transcript.trim().toLowerCase();
-        let confidence = result.confidence;
-
-        if (confidence < 0.7) return;
 
         showPopup(transcript, isActive ? "ON" : "OFF");
 
@@ -185,7 +187,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             isActive = false;
             wakeWordDetected = false;
             showPopup("Voice Control Deactivated", "SLEEP");
-            speak("Voice control deactivated. Say 'Hey email' to reactivate.");
+            speak("Voice control deactivated.");
             return;
         }
 
@@ -196,7 +198,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 executeCommand(transcript);
             }
         }
+
+        recognition.start();
     };
 
+    recognition.onerror = () => recognition.start();
     recognition.start();
 }
