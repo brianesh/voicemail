@@ -171,21 +171,23 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     recognition.onerror = (event) => {
         if (event.error === "no-speech") {
-            console.warn("No speech detected. Restarting in 2 seconds...");
             setTimeout(() => {
-                if (!isListening) recognition.start();
+                if (!isListening) {
+                    recognition.start();
+                    isListening = true;
+                }
             }, 2000);
-            return;
         }
-        console.error("Speech recognition error:", event.error);
-        showPopup("Error detected", "Error");
     };
 
     recognition.onend = () => {
         isListening = false;
         if (wakeWordDetected) {
             setTimeout(() => {
-                if (!isListening) recognition.start();
+                if (!isListening) {
+                    recognition.start();
+                    isListening = true;
+                }
             }, 1000);
         }
     };
