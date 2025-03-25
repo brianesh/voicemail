@@ -4,15 +4,15 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
 
-    recognition.continuous = false; // Changed to false to prevent multiple starts
+    recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
     let isActive = false;
     let wakeWordDetected = false;
     let composeMode = false;
-    let awaitingConfirmation = false;
     let emailDetails = { to: "", subject: "", body: "" };
+    let recognitionRunning = false;
 
     // Floating Popup UI
     const popup = document.createElement("div");
@@ -56,9 +56,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     function cleanEmail(transcript) {
         return transcript
-            .replace(/\s*at\s*/g, "@")   // "bmngari21 at gmail.com" → "bmngari21@gmail.com"
-            .replace(/\s*dot\s*/g, ".")  // "gmail dot com" → "gmail.com"
-            .replace(/\s+/g, "")         // Remove extra spaces
+            .replace(/\s*at\s*/g, "@")   
+            .replace(/\s*dot\s*/g, ".")  
+            .replace(/\s+/g, "")        
             .toLowerCase();
     }
 
@@ -73,20 +73,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function handleCompose(transcript) {
-        if (awaitingConfirmation) {
-            if (transcript.includes("yes")) {
-                awaitingConfirmation = false;
-                showPopup("Email confirmed.", "Proceeding");
-                speak("Email confirmed. What is the subject?");
-                return;
-            } else if (transcript.includes("no")) {
-                awaitingConfirmation = false;
-                emailDetails.to = "";
-                speak("Let's try again. Who do you want to send the email to?");
-                return;
-            }
-        }
-
         if (!emailDetails.to) {
             let cleanedEmail = cleanEmail(transcript);
 
@@ -98,7 +84,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             emailDetails.to = cleanedEmail;
             showPopup(`Recipient: ${emailDetails.to}`, "Confirming");
             speak(`I heard ${emailDetails.to}. Is that correct? Say yes or no.`);
-            awaitingConfirmation = true;
             return;
         }
 
@@ -129,6 +114,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 bodyField.innerHTML = emailDetails.body;
                 speak("Your email is ready. Say 'send email' to send.");
                 clearInterval(composeFields);
+                startRecognitionSafely();
             }
         }, 1000);
     }
@@ -182,8 +168,17 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
+    function startRecognitionSafely() {
+        if (!recognitionRunning) {
+            recognitionRunning = true;
+            recognition.start();
+        }
+    }
+
     recognition.onresult = (event) => {
-        let transcript = event.results[0][0].transcript.trim().toLowerCase();
+        let result = event.results[event.results.length - 1][0];
+        let transcript = result.transcript.trim().toLowerCase();
+
         showPopup(transcript, isActive ? "ON" : "OFF");
 
         if (isActive) {
@@ -195,6 +190,15 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     };
 
-    recognition.onerror = () => recognition.stop();
-    recognition.start();
+    recognition.onend = () => {
+        recognitionRunning = false;
+        if (isActive) startRecognitionSafely();
+    };
+
+    recognition.onerror = () => {
+        recognitionRunning = false;
+        setTimeout(startRecognitionSafely, 1000);
+    };
+
+    startRecognitionSafely();
 }
