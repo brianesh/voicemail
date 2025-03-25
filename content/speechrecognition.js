@@ -122,6 +122,42 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             setTimeout(() => {
                 window.open(urls[matchedCommand], "_self");
             }, 1500);
+        } else if (lowerTranscript.includes("read")) {
+            // If the user asks to read emails (inbox, starred, etc.)
+            for (let key in urls) {
+                if (lowerTranscript.includes(key)) {
+                    showPopup(`Reading ${key} emails...`, "Processing");
+                    speak(`Reading ${key} emails`);
+                    setTimeout(() => {
+                        window.open(urls[key], "_self");
+                    }, 1500);
+                    break;
+                }
+            }
+        } else if (lowerTranscript.includes("send email")) {
+            // Send email functionality
+            let emailPattern = /send email to (.*?) with subject (.*?) and message (.*)/i;
+            let match = lowerTranscript.match(emailPattern);
+
+            if (match) {
+                let recipient = match[1];
+                let subject = match[2];
+                let message = match[3];
+                let composeUrl = `https://mail.google.com/mail/u/0/#inbox?compose=new`;
+
+                showPopup(`Sending email to ${recipient}...`, "Processing");
+                speak(`Sending email to ${recipient}`);
+                
+                // Open the compose window
+                setTimeout(() => {
+                    window.open(composeUrl, "_self");
+                    // Note: Sending the email via automation isn't allowed due to security restrictions in browsers.
+                    // You'd need to use an API or other methods to send the email programmatically.
+                }, 1500);
+            } else {
+                showPopup("I didn't understand the email format. Please say 'send email to [email] with subject [subject] and message [message]'", "Error");
+                speak("I didn't understand the email format. Please try again.");
+            }
         } else {
             let responses = ["I didn't catch that. Try again?", "Can you repeat?", "I'm not sure what you meant."];
             let randomResponse = responses[Math.floor(Math.random() * responses.length)];
