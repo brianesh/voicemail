@@ -12,8 +12,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let wakeWordDetected = false;
     let isListening = false;
     let lastCommandTime = 0;
-    let isAuthenticated = false; // Add a variable to track login status
-    const password = "mysecurepassword"; // Define the password
+    let isAuthenticated = false; // Variable to track authentication
+    const password = "mysecurepassword"; // Voice password for authentication
 
     // Floating Popup UI
     const popup = document.createElement("div");
