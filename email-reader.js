@@ -1,6 +1,9 @@
 const fs = require('fs');
-const readline = require('readline');
+const express = require('express');
 const { google } = require('googleapis');
+const open = require('open');
+const path = require('path');
+const http = require('http');
 
 // Load client secrets
 let credentials;
@@ -11,65 +14,39 @@ try {
     process.exit(1);
 }
 
-// Scopes for Gmail API (read-only access)
-const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
+// Extract credentials from `web`
+const { client_secret, client_id, redirect_uris } = credentials.web;
+const REDIRECT_URI = redirect_uris[0]; // Use the first redirect URI
 const TOKEN_PATH = 'token.json';
 
-// Authorize the client
-async function authorize() {
-    const { client_secret, client_id, redirect_uris } = credentials.installed;
-    
-    if (!redirect_uris || redirect_uris.length === 0) {
-        console.error("Error: No redirect URIs found in 'client_secret.json'.");
-        process.exit(1);
+// Express app for handling OAuth callback
+const app = express();
+let oAuth2Client = new google.auth.OAuth2(client_id, client_secret, REDIRECT_URI);
+
+// Middleware to parse query parameters
+app.use(express.urlencoded({ extended: true }));
+
+// OAuth Authentication Route
+app.get('/callback', async (req, res) => {
+    const code = req.query.code;
+    if (!code) {
+        return res.send("Error: No code received.");
     }
 
-    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-
-    // Check for previously stored token
-    if (fs.existsSync(TOKEN_PATH)) {
-        try {
-            const token = JSON.parse(fs.readFileSync(TOKEN_PATH));
-            oAuth2Client.setCredentials(token);
-            return oAuth2Client;
-        } catch (err) {
-            console.error("Error reading token file. Deleting and re-authenticating.");
-            fs.unlinkSync(TOKEN_PATH);
-        }
+    try {
+        const { tokens } = await oAuth2Client.getToken(code);
+        oAuth2Client.setCredentials(tokens);
+        fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
+        res.send("Authentication successful! You can close this window.");
+    } catch (err) {
+        console.error("Error retrieving access token:", err.message);
+        res.send("Authentication failed.");
     }
+});
 
-    return getAccessToken(oAuth2Client);
-}
-
-// Get Access Token
-function getAccessToken(oAuth2Client) {
-    return new Promise((resolve, reject) => {
-        const authUrl = oAuth2Client.generateAuthUrl({
-            access_type: 'offline',
-            scope: SCOPES,
-        });
-        console.log('Authorize this app by visiting this URL:\n', authUrl);
-
-        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-        rl.question('Enter the code from that page here: ', (code) => {
-            rl.close();
-            oAuth2Client.getToken(code, (err, token) => {
-                if (err) {
-                    console.error('Error retrieving access token:', err.message);
-                    return reject(err);
-                }
-                oAuth2Client.setCredentials(token);
-                fs.writeFileSync(TOKEN_PATH, JSON.stringify(token));
-                console.log('Token stored to', TOKEN_PATH);
-                resolve(oAuth2Client);
-            });
-        });
-    });
-}
-
-// Fetch the first email in inbox
-async function readFirstEmail(auth) {
-    const gmail = google.gmail({ version: 'v1', auth });
+// Fetch first email
+async function readFirstEmail() {
+    const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
 
     try {
         const res = await gmail.users.messages.list({ userId: 'me', maxResults: 1 });
@@ -85,24 +62,38 @@ async function readFirstEmail(auth) {
         const subject = emailData ? emailData.value : "No Subject";
 
         console.log(`First email subject: ${subject}`);
-
-        // Read email content aloud using TTS
-        const emailText = `Your first email subject is: ${subject}`;
-        speak(emailText);
     } catch (err) {
         console.error('Error fetching emails:', err.message);
     }
 }
 
-// Text-to-Speech
-function speak(text) {
-    try {
-        const say = require('say');
-        say.speak(text);
-    } catch (err) {
-        console.error('Error using Text-to-Speech:', err.message);
+// Start Authentication
+async function authorize() {
+    if (fs.existsSync(TOKEN_PATH)) {
+        try {
+            const token = JSON.parse(fs.readFileSync(TOKEN_PATH));
+            oAuth2Client.setCredentials(token);
+            console.log("Using stored token.");
+            return readFirstEmail();
+        } catch (err) {
+            console.error("Error reading token file. Re-authenticating...");
+            fs.unlinkSync(TOKEN_PATH);
+        }
     }
+
+    // Open authentication URL
+    const authUrl = oAuth2Client.generateAuthUrl({
+        access_type: 'offline',
+        scope: ['https://www.googleapis.com/auth/gmail.readonly'],
+    });
+
+    console.log("Authorize this app by visiting this URL:", authUrl);
+    await open(authUrl);
 }
 
-// Run the script
-authorize().then(readFirstEmail).catch(console.error);
+// Start Express server
+const server = http.createServer(app);
+server.listen(8080, () => {
+    console.log("Server started on http://127.0.0.1:8080");
+    authorize();
+});
