@@ -1,7 +1,6 @@
 const fs = require('fs');
 const express = require('express');
 const { google } = require('googleapis');
-const open = require('open');
 const path = require('path');
 const http = require('http');
 
@@ -88,7 +87,9 @@ async function authorize() {
     });
 
     console.log("Authorize this app by visiting this URL:", authUrl);
-    await open(authUrl);
+    
+    // ✅ FIXED: Open browser in a cross-platform way
+    import('open').then((open) => open.default(authUrl));
 }
 
 // Start Express server
