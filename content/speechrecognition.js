@@ -53,15 +53,72 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         speechSynthesis.speak(utterance);
     }
 
-    async function fetchEmails() {
-        const accessToken = localStorage.getItem("access_token");
+    async function getAccessToken() {
+        let accessToken = localStorage.getItem("access_token");
+        let refreshToken = localStorage.getItem("refresh_token");
 
         if (!accessToken) {
             console.error("Access token is missing.");
-            speak("You are not logged in. Please log in first.");
-            showPopup("Access token missing. Log in required.", "ERROR");
-            return;
+            speak("Please log in to access emails.");
+            return null;
         }
+
+        // Verify if the token is still valid
+        try {
+            const response = await fetch("https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=" + accessToken);
+            const data = await response.json();
+
+            if (data.error) {
+                console.warn("Access token expired. Attempting to refresh...");
+                return await refreshAccessToken(refreshToken);
+            }
+
+            return accessToken;
+        } catch (error) {
+            console.error("Error verifying token:", error);
+            return null;
+        }
+    }
+
+    async function refreshAccessToken(refreshToken) {
+        if (!refreshToken) {
+            console.error("No refresh token available. Please log in again.");
+            speak("Your session expired. Please log in again.");
+            return null;
+        }
+
+        try {
+            const response = await fetch("https://oauth2.googleapis.com/token", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({
+                    client_id: "YOUR_CLIENT_ID",
+                    client_secret: "YOUR_CLIENT_SECRET",
+                    refresh_token: refreshToken,
+                    grant_type: "refresh_token"
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.access_token) {
+                localStorage.setItem("access_token", data.access_token);
+                console.log("Access token refreshed successfully.");
+                return data.access_token;
+            } else {
+                console.error("Failed to refresh token:", data);
+                speak("Unable to refresh access. Please log in again.");
+                return null;
+            }
+        } catch (error) {
+            console.error("Error refreshing token:", error);
+            return null;
+        }
+    }
+
+    async function fetchEmails() {
+        let accessToken = await getAccessToken();
+        if (!accessToken) return;
 
         try {
             const response = await fetch("https://www.googleapis.com/gmail/v1/users/me/messages?q=is:unread", {
@@ -72,13 +129,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 }
             });
 
-            if (response.status === 401) {
-                console.error("Invalid or expired access token.");
-                speak("Your session has expired. Please log in again.");
-                showPopup("Session expired. Log in again.", "ERROR");
-                return;
-            }
-
             const data = await response.json();
             if (!data.messages) {
                 speak("You have no new emails.");
@@ -86,10 +136,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 return;
             }
 
-            const emailIds = data.messages.slice(0, 3).map(email => email.id);
-
-            for (const emailId of emailIds) {
-                const emailResponse = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${emailId}`, {
+            for (const email of data.messages.slice(0, 3)) {
+                const emailResponse = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${email.id}`, {
                     method: "GET",
                     headers: {
                         Authorization: `Bearer ${accessToken}`,
