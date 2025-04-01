@@ -12,7 +12,7 @@ const TOKEN_PATH = 'token.json';
 // Authorize the client
 async function authorize() {
     const { client_secret, client_id, redirect_uris } = credentials.installed; // ✅ Fix applied here
-    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, "http://localhost:65247");
+    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, "http://localhost");
 
     // Check for previously stored token
     if (fs.existsSync(TOKEN_PATH)) {
