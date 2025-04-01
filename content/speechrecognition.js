@@ -229,30 +229,24 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             speak("Please say your password now.");
             showPopup("Listening for password...", "AUTHENTICATION");
     
-            recognition.stop(); // Stop the current recognition first
+            recognition.onresult = (event) => {
+                let result = event.results[event.results.length - 1][0];
+                let spokenPassword = result.transcript.trim().toLowerCase();
     
-            setTimeout(() => {
-                recognition.start(); // Restart recognition to capture the password
+                if (spokenPassword === password.toLowerCase()) {
+                    isAuthenticated = true;
+                    speak("Authentication successful. How can I assist you?");
+                    showPopup("Authenticated successfully", "AUTHENTICATED");
     
-                recognition.onresult = (event) => {
-                    let result = event.results[event.results.length - 1][0];
-                    let spokenPassword = result.transcript.trim().toLowerCase();
-    
-                    if (spokenPassword === password.toLowerCase()) {
-                        isAuthenticated = true;
-                        speak("Authentication successful. How can I assist you?");
-                        showPopup("Authenticated successfully", "AUTHENTICATED");
-                    } else {
-                        speak("Incorrect password. Please try again.");
-                        showPopup("Incorrect password", "AUTHENTICATION ERROR");
-                    }
-    
-                    // Restart recognition for normal commands after authentication
-                    recognition.start();
-                };
-            }, 1000); // Delay to ensure recognition properly restarts
+                    // Proceed to email commands after authentication
+                    isActive = true; // Activate the assistant
+                } else {
+                    speak("Incorrect password. Please try again.");
+                    showPopup("Incorrect password", "AUTHENTICATION ERROR");
+                }
+            };
         }
-    }    
+    }       
 
     recognition.onstart = () => {
         isListening = true;
