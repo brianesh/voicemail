@@ -54,11 +54,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     async function fetchEmails() {
-        const accessToken = localStorage.getItem('access_token');
+        const accessToken = localStorage.getItem("access_token");
 
         if (!accessToken) {
             console.error("Access token is missing.");
-            speak("Please log in to access emails.");
+            speak("You are not logged in. Please log in first.");
+            showPopup("Access token missing. Log in required.", "ERROR");
             return;
         }
 
@@ -70,6 +71,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     Accept: "application/json",
                 }
             });
+
+            if (response.status === 401) {
+                console.error("Invalid or expired access token.");
+                speak("Your session has expired. Please log in again.");
+                showPopup("Session expired. Log in again.", "ERROR");
+                return;
+            }
 
             const data = await response.json();
             if (!data.messages) {
