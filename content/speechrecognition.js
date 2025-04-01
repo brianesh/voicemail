@@ -12,6 +12,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let wakeWordDetected = false;
     let isListening = false;
     let lastCommandTime = 0;
+    let isAuthenticated = false; // Add a variable to track login status
+    const password = "mysecurepassword"; // Define the password
 
     // Floating Popup UI
     const popup = document.createElement("div");
@@ -116,15 +118,79 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
+    async function fetchEmails() {
+        let accessToken = await getAccessToken();
+        if (!accessToken) return;
+
+        try {
+            const response = await fetch("https://www.googleapis.com/gmail/v1/users/me/messages?q=is:unread", {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    Accept: "application/json",
+                }
+            });
+
+            const data = await response.json();
+            if (!data.messages) {
+                speak("You have no new emails.");
+                showPopup("No new emails", "INFO");
+                return;
+            }
+
+            for (const email of data.messages.slice(0, 3)) {
+                const emailResponse = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${email.id}`, {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        Accept: "application/json",
+                    }
+                });
+
+                const emailData = await emailResponse.json();
+                const headers = emailData.payload.headers;
+                const subject = headers.find(header => header.name === "Subject")?.value || "No Subject";
+                const from = headers.find(header => header.name === "From")?.value || "Unknown Sender";
+
+                let message = `Email from ${from}. Subject: ${subject}`;
+                speak(message);
+                showPopup(message, "EMAIL");
+            }
+        } catch (error) {
+            console.error("Error fetching emails:", error);
+            speak("Sorry, I couldn't fetch your emails.");
+            showPopup("Error fetching emails", "ERROR");
+        }
+    }
+
     function executeCommand(transcript) {
         let lowerTranscript = transcript.toLowerCase().trim();
 
         const commands = {
-            "login": ["login", "log in", "sign in"],
+            "compose": ["compose", "new email", "write email"],
+            "inbox": ["inbox", "open inbox", "check inbox"],
+            "sent": ["sent mail", "sent", "send", "sent messages"],
+            "drafts": ["drafts", "saved emails"],
+            "starred": ["starred", "important emails"],
+            "snoozed": ["snoozed", "snooze emails"],
+            "spam": ["spam", "junk mail"],
+            "trash": ["trash", "deleted emails"],
+            "all mail": ["all mail", "all messages"],
+            "important": ["important", "priority emails"],
+            "readEmails": ["read my emails", "read my email", "read latest emails", "check my emails", "show unread emails"]
         };
 
         const urls = {
-            "login": "/login",  // Replace with your actual login URL or logic
+            "compose": "https://mail.google.com/mail/u/0/#inbox?compose=new",
+            "inbox": "https://mail.google.com/mail/u/0/#inbox",
+            "sent": "https://mail.google.com/mail/u/0/#sent",
+            "drafts": "https://mail.google.com/mail/u/0/#drafts",
+            "starred": "https://mail.google.com/mail/u/0/#starred",
+            "snoozed": "https://mail.google.com/mail/u/0/#snoozed",
+            "spam": "https://mail.google.com/mail/u/0/#spam",
+            "trash": "https://mail.google.com/mail/u/0/#trash",
+            "all mail": "https://mail.google.com/mail/u/0/#all",
+            "important": "https://mail.google.com/mail/u/0/#important"
         };
 
         let matchedCommand = Object.keys(commands).find(command =>
@@ -136,12 +202,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             if (now - lastCommandTime < 3000) return;
 
             lastCommandTime = now;
-            showPopup(`Logging in...`, "Processing");
-            speak(`Logging in...`);
+            showPopup(`Opening ${matchedCommand}...`, "Processing");
+            speak(`Opening ${matchedCommand}`);
 
-            if (matchedCommand === "login") {
-                // Prompt for username and password via voice
-                promptForCredentials();
+            if (matchedCommand === "readEmails") {
+                showPopup("Fetching your latest emails...", "PROCESSING");
+                speak("Fetching your latest emails...");
+                fetchEmails();
                 return;
             }
 
@@ -157,39 +224,17 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         speak(randomResponse);
     }
 
-    // Prompt user for username and password via voice
-    function promptForCredentials() {
-        speak("Please say your username.");
-        recognition.onresult = (event) => {
-            let result = event.results[event.results.length - 1][0];
-            let transcript = result.transcript.trim();
-            let username = transcript;
-
-            showPopup(`Username: ${username}`, "Processing");
-            speak(`You said: ${username}. Please say your password.`);
-
-            recognition.onresult = (event) => {
-                result = event.results[event.results.length - 1][0];
-                transcript = result.transcript.trim();
-                let password = transcript;
-
-                showPopup(`Password: ${password}`, "Processing");
-                speak(`You said: ${password}. Logging you in.`);
-
-                // Attempt to log in with the username and password (replace this with actual login logic)
-                attemptLogin(username, password);
-            };
-        };
-    }
-
-    // Dummy login attempt (replace with your actual login logic)
-    function attemptLogin(username, password) {
-        if (username === "user" && password === "password") {
-            speak("Login successful.");
-            showPopup("Login successful", "SUCCESS");
-        } else {
-            speak("Invalid credentials. Please try again.");
-            showPopup("Invalid credentials. Please try again.", "ERROR");
+    function authenticateUser(command) {
+        if (command === "password") {
+            const passwordPrompt = prompt("Please enter the password:");
+            if (passwordPrompt === password) {
+                isAuthenticated = true;
+                speak("Authentication successful. How can I assist you?");
+                showPopup("Authenticated successfully", "AUTHENTICATED");
+            } else {
+                speak("Incorrect password. Please try again.");
+                showPopup("Incorrect password", "AUTHENTICATION ERROR");
+            }
         }
     }
 
@@ -210,6 +255,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
         let sleepCommands = ["sleep email", "stop email", "turn off email"];
+        let authCommand = ["password", "login", "authenticate"];
+
+        if (authCommand.some(word => transcript.includes(word))) {
+            authenticateUser(transcript);
+            return;
+        }
 
         if (wakeWords.some(word => transcript.includes(word))) {
             isActive = true;
