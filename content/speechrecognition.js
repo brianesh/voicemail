@@ -53,26 +53,56 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         speechSynthesis.speak(utterance);
     }
 
-    // Improved fuzzy matching (Levenshtein Distance)
-    function levenshteinDistance(a, b) {
-        if (a.length === 0) return b.length;
-        if (b.length === 0) return a.length;
-        let matrix = [];
+    async function fetchEmails() {
+        const accessToken = localStorage.getItem('access_token'); // Assuming you have stored the access token in localStorage
 
-        for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-        for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-
-        for (let i = 1; i <= b.length; i++) {
-            for (let j = 1; j <= a.length; j++) {
-                let cost = b[i - 1] === a[j - 1] ? 0 : 1;
-                matrix[i][j] = Math.min(
-                    matrix[i - 1][j] + 1,
-                    matrix[i][j - 1] + 1,
-                    matrix[i - 1][j - 1] + cost
-                );
-            }
+        if (!accessToken) {
+            console.error("Access token is missing or invalid.");
+            speak("Access token is missing. Please log in.");
+            return;
         }
-        return matrix[b.length][a.length];
+
+        try {
+            const response = await fetch("https://www.googleapis.com/gmail/v1/users/me/messages?q=is:unread", {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${accessToken}`, // Use the access token here
+                    Accept: "application/json",
+                }
+            });
+
+            const data = await response.json();
+            if (!data.messages) {
+                speak("You have no new emails.");
+                showPopup("No new emails", "INFO");
+                return;
+            }
+
+            const emailIds = data.messages.slice(0, 3).map(email => email.id); // Get 3 latest unread emails
+
+            for (const emailId of emailIds) {
+                const emailResponse = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${emailId}`, {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`, // Use the access token here
+                        Accept: "application/json",
+                    }
+                });
+
+                const emailData = await emailResponse.json();
+                const headers = emailData.payload.headers;
+                const subject = headers.find(header => header.name === "Subject")?.value || "No Subject";
+                const from = headers.find(header => header.name === "From")?.value || "Unknown Sender";
+
+                let message = `Email from ${from}. Subject: ${subject}`;
+                speak(message);
+                showPopup(message, "EMAIL");
+            }
+        } catch (error) {
+            console.error("Error fetching emails:", error);
+            speak("Sorry, I couldn't fetch your emails.");
+            showPopup("Error fetching emails", "ERROR");
+        }
     }
 
     function executeCommand(transcript) {
@@ -122,12 +152,20 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             setTimeout(() => {
                 window.open(urls[matchedCommand], "_self");
             }, 1500);
-        } else {
-            let responses = ["I didn't catch that. Try again?", "Can you repeat?", "I'm not sure what you meant."];
-            let randomResponse = responses[Math.floor(Math.random() * responses.length)];
-            showPopup(randomResponse, "Error");
-            speak(randomResponse);
+            return;
         }
+
+        if (lowerTranscript.includes("read my emails") || lowerTranscript.includes("read latest emails")) {
+            showPopup("Fetching your latest emails...", "PROCESSING");
+            speak("Fetching your latest emails...");
+            fetchEmails();
+            return;
+        }
+
+        let responses = ["I didn't catch that. Try again?", "Can you repeat?", "I'm not sure what you meant."];
+        let randomResponse = responses[Math.floor(Math.random() * responses.length)];
+        showPopup(randomResponse, "Error");
+        speak(randomResponse);
     }
 
     recognition.onstart = () => {
@@ -148,7 +186,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
         let sleepCommands = ["sleep email", "stop email", "turn off email"];
 
-        if (wakeWords.some(word => levenshteinDistance(transcript, word) <= 2)) {
+        if (wakeWords.some(word => transcript.includes(word))) {
             isActive = true;
             wakeWordDetected = true;
             showPopup("Voice Control Activated", "ACTIVE");
@@ -156,7 +194,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return;
         }
 
-        if (sleepCommands.some(word => levenshteinDistance(transcript, word) <= 2)) {
+        if (sleepCommands.some(word => transcript.includes(word))) {
             isActive = false;
             wakeWordDetected = false;
             showPopup("Voice Control Deactivated", "SLEEP");
