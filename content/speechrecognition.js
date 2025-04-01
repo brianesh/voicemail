@@ -175,7 +175,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             "trash": ["trash", "deleted emails"],
             "all mail": ["all mail", "all messages"],
             "important": ["important", "priority emails"],
-            "readEmails": ["read my emails", "read latest emails", "check my emails", "show unread emails"]
+            "readEmails": ["read my emails", "read my email", "read latest emails", "check my emails", "show unread emails"]
         };
 
         const urls = {
