@@ -54,11 +54,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     async function fetchEmails() {
-        const accessToken = localStorage.getItem('access_token'); // Assuming you have stored the access token in localStorage
+        const accessToken = localStorage.getItem('access_token');
 
         if (!accessToken) {
-            console.error("Access token is missing or invalid.");
-            speak("Access token is missing. Please log in.");
+            console.error("Access token is missing.");
+            speak("Please log in to access emails.");
             return;
         }
 
@@ -66,7 +66,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const response = await fetch("https://www.googleapis.com/gmail/v1/users/me/messages?q=is:unread", {
                 method: "GET",
                 headers: {
-                    Authorization: `Bearer ${accessToken}`, // Use the access token here
+                    Authorization: `Bearer ${accessToken}`,
                     Accept: "application/json",
                 }
             });
@@ -78,13 +78,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 return;
             }
 
-            const emailIds = data.messages.slice(0, 3).map(email => email.id); // Get 3 latest unread emails
+            const emailIds = data.messages.slice(0, 3).map(email => email.id);
 
             for (const emailId of emailIds) {
                 const emailResponse = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${emailId}`, {
                     method: "GET",
                     headers: {
-                        Authorization: `Bearer ${accessToken}`, // Use the access token here
+                        Authorization: `Bearer ${accessToken}`,
                         Accept: "application/json",
                     }
                 });
@@ -104,9 +104,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             showPopup("Error fetching emails", "ERROR");
         }
     }
+
     function executeCommand(transcript) {
         let lowerTranscript = transcript.toLowerCase().trim();
-    
+
         const commands = {
             "compose": ["compose", "new email", "write email"],
             "inbox": ["inbox", "open inbox", "check inbox"],
@@ -120,7 +121,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             "important": ["important", "priority emails"],
             "readEmails": ["read my emails", "read latest emails", "check my emails", "show unread emails"]
         };
-    
+
         const urls = {
             "compose": "https://mail.google.com/mail/u/0/#inbox?compose=new",
             "inbox": "https://mail.google.com/mail/u/0/#inbox",
@@ -133,41 +134,37 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             "all mail": "https://mail.google.com/mail/u/0/#all",
             "important": "https://mail.google.com/mail/u/0/#important"
         };
-    
-        let matchedCommand = null;
-        for (let command in commands) {
-            if (commands[command].some(phrase => lowerTranscript.includes(phrase))) {
-                matchedCommand = command;
-                break;
-            }
-        }
-    
+
+        let matchedCommand = Object.keys(commands).find(command =>
+            commands[command].some(phrase => lowerTranscript.includes(phrase))
+        );
+
         if (matchedCommand) {
             let now = Date.now();
-            if (now - lastCommandTime < 3000) return; // Prevent duplicate execution
-    
+            if (now - lastCommandTime < 3000) return;
+
             lastCommandTime = now;
             showPopup(`Opening ${matchedCommand}...`, "Processing");
             speak(`Opening ${matchedCommand}`);
-            
+
             if (matchedCommand === "readEmails") {
                 showPopup("Fetching your latest emails...", "PROCESSING");
                 speak("Fetching your latest emails...");
-                fetchEmails();  // Call the function to fetch emails
+                fetchEmails();
                 return;
             }
-    
+
             setTimeout(() => {
                 window.open(urls[matchedCommand], "_self");
             }, 1500);
             return;
         }
-    
+
         let responses = ["I didn't catch that. Try again?", "Can you repeat?", "I'm not sure what you meant."];
         let randomResponse = responses[Math.floor(Math.random() * responses.length)];
         showPopup(randomResponse, "Error");
         speak(randomResponse);
-    }    
+    }
 
     recognition.onstart = () => {
         isListening = true;
@@ -179,7 +176,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         let transcript = result.transcript.trim().toLowerCase();
         let confidence = result.confidence;
 
-        if (confidence < 0.7) return; // Ignore low-confidence results
+        if (confidence < 0.7) return;
 
         console.log("You said:", transcript);
         showPopup(transcript, isActive ? "ON" : "OFF");
@@ -208,26 +205,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     };
 
-    recognition.onerror = (event) => {
-        if (event.error === "no-speech") {
-            setTimeout(() => {
-                if (!isListening) {
-                    recognition.start();
-                    isListening = true;
-                }
-            }, 2000);
-        }
-    };
-
     recognition.onend = () => {
         isListening = false;
         if (wakeWordDetected) {
-            setTimeout(() => {
-                if (!isListening) {
-                    recognition.start();
-                    isListening = true;
-                }
-            }, 1000);
+            setTimeout(() => recognition.start(), 1000);
         }
     };
 
