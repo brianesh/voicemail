@@ -11,7 +11,7 @@ const TOKEN_PATH = 'token.json';
 
 // Authorize the client
 async function authorize() {
-    const { client_secret, client_id, redirect_uris } = credentials.web; // Fix: Use `web` instead of `installed`
+    const { client_secret, client_id, redirect_uris } = credentials.installed; // ✅ Fix applied here
     const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
 
     // Check for previously stored token
