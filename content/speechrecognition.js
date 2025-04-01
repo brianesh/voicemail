@@ -9,6 +9,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     recognition.lang = "en-US";
 
     let isActive = false;
+    let wakeWordDetected = false;
     let isListening = false;
     let lastCommandTime = 0;
 
@@ -52,65 +53,23 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         speechSynthesis.speak(utterance);
     }
 
-    // 🔹 Function to Refresh Token
-    async function refreshAccessToken() {
-        const refreshToken = localStorage.getItem("refresh_token");
-
-        if (!refreshToken) {
-            console.error("Refresh token is missing.");
-            speak("Authentication expired. Please log in again.");
-            return;
-        }
-
-        try {
-            const response = await fetch("https://oauth2.googleapis.com/token", {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: new URLSearchParams({
-                    client_id: "YOUR_CLIENT_ID",
-                    client_secret: "YOUR_CLIENT_SECRET",
-                    refresh_token: refreshToken,
-                    grant_type: "refresh_token"
-                })
-            });
-
-            const data = await response.json();
-
-            if (data.access_token) {
-                localStorage.setItem("access_token", data.access_token);
-                console.log("Access token refreshed!");
-            } else {
-                console.error("Failed to refresh token:", data);
-                speak("Authentication error. Please log in.");
-            }
-        } catch (error) {
-            console.error("Error refreshing access token:", error);
-            speak("Error refreshing token.");
-        }
-    }
-
-    // 🔹 Function to Fetch Unread Emails
     async function fetchEmails() {
-        let accessToken = localStorage.getItem('access_token');
+        const accessToken = localStorage.getItem('access_token'); // Assuming you have stored the access token in localStorage
 
         if (!accessToken) {
-            console.error("Access token is missing. Refreshing...");
-            await refreshAccessToken();
-            accessToken = localStorage.getItem('access_token');
+            console.error("Access token is missing or invalid.");
+            speak("Access token is missing. Please log in.");
+            return;
         }
 
         try {
             const response = await fetch("https://www.googleapis.com/gmail/v1/users/me/messages?q=is:unread", {
                 method: "GET",
-                headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" }
+                headers: {
+                    Authorization: `Bearer ${accessToken}`, // Use the access token here
+                    Accept: "application/json",
+                }
             });
-
-            if (response.status === 401) {
-                console.warn("Access token expired. Refreshing...");
-                await refreshAccessToken();
-                accessToken = localStorage.getItem('access_token');
-                return fetchEmails(); // Retry after refreshing token
-            }
 
             const data = await response.json();
             if (!data.messages) {
@@ -119,12 +78,15 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 return;
             }
 
-            const emailIds = data.messages.slice(0, 3).map(email => email.id); 
+            const emailIds = data.messages.slice(0, 3).map(email => email.id); // Get 3 latest unread emails
 
             for (const emailId of emailIds) {
                 const emailResponse = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${emailId}`, {
                     method: "GET",
-                    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" }
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`, // Use the access token here
+                        Accept: "application/json",
+                    }
                 });
 
                 const emailData = await emailResponse.json();
@@ -142,11 +104,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             showPopup("Error fetching emails", "ERROR");
         }
     }
-
-    // 🔹 Function to Process Commands
     function executeCommand(transcript) {
         let lowerTranscript = transcript.toLowerCase().trim();
-
+    
         const commands = {
             "compose": ["compose", "new email", "write email"],
             "inbox": ["inbox", "open inbox", "check inbox"],
@@ -158,9 +118,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             "trash": ["trash", "deleted emails"],
             "all mail": ["all mail", "all messages"],
             "important": ["important", "priority emails"],
-            "readEmails": ["read my emails", "read my email", "read latest emails", "check my emails", "show unread emails"]
+            "readEmails": ["read my emails", "read latest emails", "check my emails", "show unread emails"]
         };
-
+    
         const urls = {
             "compose": "https://mail.google.com/mail/u/0/#inbox?compose=new",
             "inbox": "https://mail.google.com/mail/u/0/#inbox",
@@ -173,32 +133,103 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             "all mail": "https://mail.google.com/mail/u/0/#all",
             "important": "https://mail.google.com/mail/u/0/#important"
         };
-
-        let matchedCommand = Object.keys(commands).find(command =>
-            commands[command].some(phrase => lowerTranscript.includes(phrase))
-        );
-
+    
+        let matchedCommand = null;
+        for (let command in commands) {
+            if (commands[command].some(phrase => lowerTranscript.includes(phrase))) {
+                matchedCommand = command;
+                break;
+            }
+        }
+    
         if (matchedCommand) {
-            lastCommandTime = Date.now();
+            let now = Date.now();
+            if (now - lastCommandTime < 3000) return; // Prevent duplicate execution
+    
+            lastCommandTime = now;
+            showPopup(`Opening ${matchedCommand}...`, "Processing");
+            speak(`Opening ${matchedCommand}`);
+            
             if (matchedCommand === "readEmails") {
                 showPopup("Fetching your latest emails...", "PROCESSING");
                 speak("Fetching your latest emails...");
-                fetchEmails();
+                fetchEmails();  // Call the function to fetch emails
                 return;
             }
-
-            showPopup(`Opening ${matchedCommand}...`, "Processing");
-            speak(`Opening ${matchedCommand}`);
+    
             setTimeout(() => {
                 window.open(urls[matchedCommand], "_self");
             }, 1500);
+            return;
         }
-    }
+    
+        let responses = ["I didn't catch that. Try again?", "Can you repeat?", "I'm not sure what you meant."];
+        let randomResponse = responses[Math.floor(Math.random() * responses.length)];
+        showPopup(randomResponse, "Error");
+        speak(randomResponse);
+    }    
 
-    recognition.onstart = () => showPopup("Listening...", "ON");
-    recognition.onresult = (event) => executeCommand(event.results[event.results.length - 1][0].transcript);
-    recognition.onerror = () => setTimeout(() => recognition.start(), 2000);
-    recognition.onend = () => setTimeout(() => recognition.start(), 1000);
+    recognition.onstart = () => {
+        isListening = true;
+        showPopup("Listening...", "ON");
+    };
+
+    recognition.onresult = (event) => {
+        let result = event.results[event.results.length - 1][0];
+        let transcript = result.transcript.trim().toLowerCase();
+        let confidence = result.confidence;
+
+        if (confidence < 0.7) return; // Ignore low-confidence results
+
+        console.log("You said:", transcript);
+        showPopup(transcript, isActive ? "ON" : "OFF");
+
+        let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
+        let sleepCommands = ["sleep email", "stop email", "turn off email"];
+
+        if (wakeWords.some(word => transcript.includes(word))) {
+            isActive = true;
+            wakeWordDetected = true;
+            showPopup("Voice Control Activated", "ACTIVE");
+            speak("Voice control activated. How can I assist?");
+            return;
+        }
+
+        if (sleepCommands.some(word => transcript.includes(word))) {
+            isActive = false;
+            wakeWordDetected = false;
+            showPopup("Voice Control Deactivated", "SLEEP");
+            speak("Voice control deactivated. Say 'Hey email' to reactivate.");
+            return;
+        }
+
+        if (isActive) {
+            executeCommand(transcript);
+        }
+    };
+
+    recognition.onerror = (event) => {
+        if (event.error === "no-speech") {
+            setTimeout(() => {
+                if (!isListening) {
+                    recognition.start();
+                    isListening = true;
+                }
+            }, 2000);
+        }
+    };
+
+    recognition.onend = () => {
+        isListening = false;
+        if (wakeWordDetected) {
+            setTimeout(() => {
+                if (!isListening) {
+                    recognition.start();
+                    isListening = true;
+                }
+            }, 1000);
+        }
+    };
 
     recognition.start();
 }
