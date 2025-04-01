@@ -104,10 +104,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             showPopup("Error fetching emails", "ERROR");
         }
     }
-
     function executeCommand(transcript) {
         let lowerTranscript = transcript.toLowerCase().trim();
-
+    
         const commands = {
             "compose": ["compose", "new email", "write email"],
             "inbox": ["inbox", "open inbox", "check inbox"],
@@ -118,9 +117,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             "spam": ["spam", "junk mail"],
             "trash": ["trash", "deleted emails"],
             "all mail": ["all mail", "all messages"],
-            "important": ["important", "priority emails"]
+            "important": ["important", "priority emails"],
+            "readEmails": ["read my emails", "read latest emails", "check my emails", "show unread emails"]
         };
-
+    
         const urls = {
             "compose": "https://mail.google.com/mail/u/0/#inbox?compose=new",
             "inbox": "https://mail.google.com/mail/u/0/#inbox",
@@ -133,7 +133,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             "all mail": "https://mail.google.com/mail/u/0/#all",
             "important": "https://mail.google.com/mail/u/0/#important"
         };
-
+    
         let matchedCommand = null;
         for (let command in commands) {
             if (commands[command].some(phrase => lowerTranscript.includes(phrase))) {
@@ -141,32 +141,33 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 break;
             }
         }
-
+    
         if (matchedCommand) {
             let now = Date.now();
             if (now - lastCommandTime < 3000) return; // Prevent duplicate execution
-
+    
             lastCommandTime = now;
             showPopup(`Opening ${matchedCommand}...`, "Processing");
             speak(`Opening ${matchedCommand}`);
+            
+            if (matchedCommand === "readEmails") {
+                showPopup("Fetching your latest emails...", "PROCESSING");
+                speak("Fetching your latest emails...");
+                fetchEmails();  // Call the function to fetch emails
+                return;
+            }
+    
             setTimeout(() => {
                 window.open(urls[matchedCommand], "_self");
             }, 1500);
             return;
         }
-
-        if (lowerTranscript.includes("read my emails") || lowerTranscript.includes("read latest emails")) {
-            showPopup("Fetching your latest emails...", "PROCESSING");
-            speak("Fetching your latest emails...");
-            fetchEmails();
-            return;
-        }
-
+    
         let responses = ["I didn't catch that. Try again?", "Can you repeat?", "I'm not sure what you meant."];
         let randomResponse = responses[Math.floor(Math.random() * responses.length)];
         showPopup(randomResponse, "Error");
         speak(randomResponse);
-    }
+    }    
 
     recognition.onstart = () => {
         isListening = true;
