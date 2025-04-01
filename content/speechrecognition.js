@@ -229,21 +229,28 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             speak("Please say your password now.");
             showPopup("Listening for password...", "AUTHENTICATION");
     
-            recognition.onresult = (event) => {
-                let result = event.results[event.results.length - 1][0];
-                let spokenPassword = result.transcript.trim().toLowerCase();
+            recognition.stop(); // Stop the current recognition first
     
-                if (spokenPassword === password.toLowerCase()) {
-                    isAuthenticated = true;
-                    speak("Authentication successful. How can I assist you?");
-                    showPopup("Authenticated successfully", "AUTHENTICATED");
-                } else {
-                    speak("Incorrect password. Please try again.");
-                    showPopup("Incorrect password", "AUTHENTICATION ERROR");
-                }
-            };
+            setTimeout(() => {
+                recognition.start(); // Restart recognition to capture the password
     
-            recognition.start(); // Restart recognition to capture the password
+                recognition.onresult = (event) => {
+                    let result = event.results[event.results.length - 1][0];
+                    let spokenPassword = result.transcript.trim().toLowerCase();
+    
+                    if (spokenPassword === password.toLowerCase()) {
+                        isAuthenticated = true;
+                        speak("Authentication successful. How can I assist you?");
+                        showPopup("Authenticated successfully", "AUTHENTICATED");
+                    } else {
+                        speak("Incorrect password. Please try again.");
+                        showPopup("Incorrect password", "AUTHENTICATION ERROR");
+                    }
+    
+                    // Restart recognition for normal commands after authentication
+                    recognition.start();
+                };
+            }, 1000); // Delay to ensure recognition properly restarts
         }
     }    
 
