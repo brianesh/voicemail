@@ -225,18 +225,27 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function authenticateUser(command) {
-        if (command === "password") {
-            const passwordPrompt = prompt("Please enter the password:");
-            if (passwordPrompt === password) {
-                isAuthenticated = true;
-                speak("Authentication successful. How can I assist you?");
-                showPopup("Authenticated successfully", "AUTHENTICATED");
-            } else {
-                speak("Incorrect password. Please try again.");
-                showPopup("Incorrect password", "AUTHENTICATION ERROR");
-            }
+        if (command.includes("password") || command.includes("login") || command.includes("authenticate")) {
+            speak("Please say your password now.");
+            showPopup("Listening for password...", "AUTHENTICATION");
+    
+            recognition.onresult = (event) => {
+                let result = event.results[event.results.length - 1][0];
+                let spokenPassword = result.transcript.trim().toLowerCase();
+    
+                if (spokenPassword === password.toLowerCase()) {
+                    isAuthenticated = true;
+                    speak("Authentication successful. How can I assist you?");
+                    showPopup("Authenticated successfully", "AUTHENTICATED");
+                } else {
+                    speak("Incorrect password. Please try again.");
+                    showPopup("Incorrect password", "AUTHENTICATION ERROR");
+                }
+            };
+    
+            recognition.start(); // Restart recognition to capture the password
         }
-    }
+    }    
 
     recognition.onstart = () => {
         isListening = true;
