@@ -605,7 +605,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 body
             ].join("\n");
             
-            const base64Email = btoa(rawEmail).replace(/\+/g, '-').replace(/\//g, '_');
+            const base64Email = btoa(unescape(encodeURIComponent(rawEmail))).replace(/\+/g, '-').replace(/\//g, '_');
             
             const response = await withRetry(
                 fetchWithTimeout,
