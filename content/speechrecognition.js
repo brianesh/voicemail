@@ -14,10 +14,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let lastCommandTime = 0;
     let isAuthenticated = false;
 
-    // OAuth Configuration - MUST match your Google Cloud Console settings
+    // OAuth Configuration
     const OAUTH_CONFIG = {
         clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-        redirectUri: 'https://mail.google.com', // Must match exactly what's in Google Cloud Console
+        redirectUri: 'https://mail.google.com',
         scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
         authUrl: 'https://accounts.google.com/o/oauth2/v2/auth'
     };
@@ -124,6 +124,26 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
+    function containsEmail(text) {
+        // More flexible email pattern to account for speech recognition variations
+        const emailPattern = /([a-zA-Z0-9._-]+(?:\s*(?:at|and)\s*[a-zA-Z0-9._-]+)?(?:\s*(?:dot|doht|dought)\s*[a-zA-Z]+)?/gi;
+        const match = text.match(emailPattern);
+        if (!match) return null;
+        
+        // Convert speech patterns to proper email format
+        let potentialEmail = match[0]
+            .replace(/\s*(at|and)\s*/gi, '@')
+            .replace(/\s*(dot|doht|dought)\s*/gi, '.')
+            .replace(/\s+/g, '')
+            .toLowerCase();
+            
+        // Basic validation
+        if (potentialEmail.includes('@') && potentialEmail.includes('.')) {
+            return potentialEmail;
+        }
+        return null;
+    }
+
     function checkAuthStatus() {
         const accessToken = localStorage.getItem("access_token");
         const expiresAt = localStorage.getItem("expires_at");
@@ -163,7 +183,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function initiateOAuthLogin() {
-        // Generate a secure state token
         const state = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
         sessionStorage.setItem('oauth_state', state);
         
@@ -192,7 +211,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return;
         }
 
-        // Verify state
         const storedState = sessionStorage.getItem('oauth_state');
         if (state !== storedState) {
             console.error('State mismatch');
@@ -203,7 +221,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         if (code) {
             try {
-                // Exchange authorization code for tokens
                 const response = await fetch('https://oauth2.googleapis.com/token', {
                     method: 'POST',
                     headers: {
@@ -229,7 +246,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 localStorage.setItem('expires_at', expiresAt);
                 isAuthenticated = true;
                 
-                // Redirect to Gmail after auth
                 const redirectUrl = sessionStorage.getItem('postAuthRedirect') || 'https://mail.google.com';
                 window.location.href = redirectUrl;
             } catch (error) {
@@ -239,7 +255,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
-    // Check for OAuth response when page loads
     if (window.location.hash.includes('access_token')) {
         handleOAuthResponse();
     }
@@ -272,7 +287,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 return;
             }
 
-            // Process the first email
             const email = data.messages[0];
             const emailResponse = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${email.id}`, {
                 headers: {
@@ -314,9 +328,20 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return;
         }
         
+        const normalizedEmail = containsEmail(to) || to;
+        const cleanEmail = normalizedEmail.replace(/\s*(at|and)\s*/gi, '@')
+                                        .replace(/\s*(dot|doht|dought)\s*/gi, '.')
+                                        .replace(/\s+/g, '');
+        
+        if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+            speak("That doesn't look like a valid email address. Please try saying the full email address clearly.");
+            addToHistory(`Send email to ${to}`, "Invalid email address");
+            return;
+        }
+
         const accessToken = localStorage.getItem("access_token");
         const rawEmail = [
-            `To: ${to}`,
+            `To: ${cleanEmail}`,
             `Subject: ${subject}`,
             "",
             body
@@ -338,12 +363,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             
             const data = await response.json();
             speak("Email sent successfully");
-            addToHistory(`Send email to ${to}`, "Email sent successfully");
+            addToHistory(`Send email to ${cleanEmail}`, "Email sent successfully");
             return data;
         } catch (error) {
             speak("Failed to send email");
             console.error(error);
-            addToHistory(`Send email to ${to}`, "Failed to send email");
+            addToHistory(`Send email to ${cleanEmail}`, "Failed to send email");
             throw error;
         }
     }
@@ -453,7 +478,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             
             const emailData = await response.json();
             
-            // Extract headers
             const headers = emailData.payload.headers;
             const fromHeader = headers.find(h => h.name.toLowerCase() === "from");
             const subjectHeader = headers.find(h => h.name.toLowerCase() === "subject");
@@ -463,7 +487,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const subject = subjectHeader ? subjectHeader.value : "No subject";
             const date = dateHeader ? new Date(dateHeader.value).toLocaleString() : "Unknown date";
             
-            // Extract body
             let body = "";
             if (emailData.payload.parts) {
                 const textPart = emailData.payload.parts.find(part => part.mimeType === "text/plain");
@@ -474,10 +497,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 body = atob(emailData.payload.body.data.replace(/-/g, '+').replace(/_/g, '/'));
             }
             
-            // Clean up body text
             body = body.replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim();
             
-            // Read the email
             const message = `Email from ${from}, received ${date}. Subject: ${subject}. ${body.substring(0, 500)}`;
             speak(message);
             showPopup(`Reading email: ${subject}`, "EMAIL");
@@ -493,24 +514,31 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     function parseCommand(transcript) {
         const lowerTranscript = transcript.toLowerCase().trim();
+        const emailInCommand = containsEmail(lowerTranscript);
         
         const commandPatterns = [
             {
-                regex: /^(?:reply|respond)(?: to)? (.+?)(?: email)?$/i,
+                regex: /^(?:reply|respond)(?:\s+to)?\s+(.+?)(?:\s+email)?$/i,
                 action: 'reply',
-                extract: (match) => ({ target: match[1] })
+                extract: (match) => {
+                    const target = containsEmail(match[1]) || match[1];
+                    return { target };
+                }
             },
             {
-                regex: /^send (?:an? )?email to (.+?)(?: with subject (.+?))?(?: saying (.+))?$/i,
+                regex: /^send(?:\s+(?:an?)?)?\s+email(?:\s+to)?\s+(.+?)(?:\s+with\s+subject\s+(.+?))?(?:\s+saying\s+(.+))?$/i,
                 action: 'send',
-                extract: (match) => ({
-                    to: match[1],
-                    subject: match[2] || "No subject",
-                    body: match[3] || "No content"
-                })
+                extract: (match) => {
+                    const to = containsEmail(match[1]) || match[1];
+                    return {
+                        to,
+                        subject: match[2] || "No subject",
+                        body: match[3] || "No content"
+                    };
+                }
             },
             {
-                regex: /^delete (?:the )?(.+?) email(?: in (.+?))?$/i,
+                regex: /^delete(?:\s+the)?\s+(.+?)(?:\s+email)?(?:\s+in\s+(.+?))?$/i,
                 action: 'delete',
                 extract: (match) => ({
                     position: match[1],
@@ -518,7 +546,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 })
             },
             {
-                regex: /^mark (?:all )?(.+?) emails? (?:as )?(read|unread)(?: in (.+?))?$/i,
+                regex: /^mark(?:\s+all)?\s+(.+?)(?:\s+emails?)?(?:\s+as\s+)?(read|unread)(?:\s+in\s+(.+?))?$/i,
                 action: 'markStatus',
                 extract: (match) => ({
                     filter: match[1],
@@ -527,86 +555,137 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 })
             },
             {
-                regex: /^read (?:the )?(.+?) email(?: in (.+?))?$/i,
+                regex: /^read(?:\s+the)?\s+(.+?)(?:\s+email)?(?:\s+in\s+(.+?))?$/i,
                 action: 'readEmail',
                 extract: (match) => ({
                     position: match[1],
                     folder: match[2] || "inbox"
                 })
+            },
+            {
+                regex: /^(?:open|show|read)\s+email\s+(?:from|to)?\s*(.+@.+\.\w+)/i,
+                action: 'openEmailFrom',
+                extract: (match) => ({
+                    email: containsEmail(match[1]) || match[1]
+                })
+            },
+            {
+                regex: /^email\s+(.+@.+\.\w+)/i,
+                action: 'handleEmailAddress',
+                extract: (match) => ({
+                    email: containsEmail(match[1]) || match[1]
+                })
             }
         ];
 
-        // Try to match the transcript against each pattern
         for (const pattern of commandPatterns) {
             const match = lowerTranscript.match(pattern.regex);
             if (match) {
+                const extracted = pattern.extract(match);
                 return {
                     action: pattern.action,
-                    ...pattern.extract(match)
+                    ...extracted
                 };
             }
+        }
+
+        const emailAddress = containsEmail(lowerTranscript);
+        if (emailAddress) {
+            return {
+                action: 'handleEmailAddress',
+                email: emailAddress
+            };
         }
 
         return null;
     }
 
+    async function handleEmailAddressCommand(email) {
+        const normalizedEmail = email.replace(/\s*(at|and)\s*/gi, '@')
+                                   .replace(/\s*(dot|doht|dought)\s*/gi, '.')
+                                   .replace(/\s+/g, '');
+        
+        speak(`I detected the email address ${normalizedEmail}. Would you like to compose an email to this address or search for emails from them?`);
+        addToHistory(`Email mentioned: ${normalizedEmail}`, "Prompting for action");
+        
+        recognition.start();
+    }
+
+    async function handleOpenEmailFromCommand(email) {
+        const normalizedEmail = email.replace(/\s*(at|and)\s*/gi, '@')
+                                   .replace(/\s*(dot|doht|dought)\s*/gi, '.')
+                                   .replace(/\s+/g, '');
+        
+        const messageId = await findMessageIdBySender(normalizedEmail);
+        if (messageId) {
+            await readFullEmail(messageId);
+            addToHistory(`Read email from ${normalizedEmail}`, "Email read aloud");
+        } else {
+            speak(`Could not find an email from ${normalizedEmail}`);
+            addToHistory(`Read email from ${normalizedEmail}`, "No email found");
+        }
+    }
+
     async function executeEnhancedCommand(parsedCommand) {
-        switch (parsedCommand.action) {
-            case 'reply':
-                await handleReplyCommand(parsedCommand.target);
-                break;
-            case 'send':
-                await handleSendCommand(parsedCommand.to, parsedCommand.subject, parsedCommand.body);
-                break;
-            case 'delete':
-                await handleDeleteCommand(parsedCommand.position, parsedCommand.folder);
-                break;
-            case 'markStatus':
-                await handleMarkStatusCommand(parsedCommand.filter, parsedCommand.status, parsedCommand.folder);
-                break;
-            case 'readEmail':
-                await handleReadEmailCommand(parsedCommand.position, parsedCommand.folder);
-                break;
-            default:
-                speak("I didn't understand that command. Please try again.");
+        try {
+            switch (parsedCommand.action) {
+                case 'reply':
+                    await handleReplyCommand(parsedCommand.target);
+                    break;
+                case 'send':
+                    await handleSendCommand(parsedCommand.to, parsedCommand.subject, parsedCommand.body);
+                    break;
+                case 'delete':
+                    await handleDeleteCommand(parsedCommand.position, parsedCommand.folder);
+                    break;
+                case 'markStatus':
+                    await handleMarkStatusCommand(parsedCommand.filter, parsedCommand.status, parsedCommand.folder);
+                    break;
+                case 'readEmail':
+                    await handleReadEmailCommand(parsedCommand.position, parsedCommand.folder);
+                    break;
+                case 'openEmailFrom':
+                    await handleOpenEmailFromCommand(parsedCommand.email);
+                    break;
+                case 'handleEmailAddress':
+                    await handleEmailAddressCommand(parsedCommand.email);
+                    break;
+                default:
+                    speak("I didn't understand that command. Please try again.");
+            }
+        } catch (error) {
+            console.error("Command execution error:", error);
+            speak("Sorry, I encountered an error processing that command.");
         }
     }
 
     async function handleReplyCommand(target) {
-        if (target.includes('@')) {
-            const messageId = await findMessageIdBySender(target);
+        const extractedTarget = containsEmail(target) || target;
+        const normalizedTarget = extractedTarget.replace(/\s*(at|and)\s*/gi, '@')
+                                              .replace(/\s*(dot|doht|dought)\s*/gi, '.')
+                                              .replace(/\s+/g, '');
+        
+        if (normalizedTarget.includes('@')) {
+            const messageId = await findMessageIdBySender(normalizedTarget);
             if (messageId) {
                 window.open(`https://mail.google.com/mail/u/0/#inbox?compose=new&messageId=${messageId}`, "_self");
-                speak(`Opening reply to email from ${target}`);
-                addToHistory(`Reply to email from ${target}`, "Opened reply interface");
+                speak(`Opening reply to email from ${normalizedTarget}`);
+                addToHistory(`Reply to email from ${normalizedTarget}`, "Opened reply interface");
             } else {
-                speak(`Could not find an email from ${target}`);
-                addToHistory(`Reply to email from ${target}`, "No email found");
+                speak(`Could not find an email from ${normalizedTarget}. Would you like to compose a new email to them?`);
+                addToHistory(`Reply to email from ${normalizedTarget}`, "No email found");
             }
         } else {
-            const messageId = await findMessageIdByPosition(target);
+            const messageId = await findMessageIdByPosition(normalizedTarget);
             if (messageId) {
                 window.open(`https://mail.google.com/mail/u/0/#inbox?compose=new&messageId=${messageId}`, "_self");
-                speak(`Opening reply to the ${target} email`);
-                addToHistory(`Reply to ${target} email`, "Opened reply interface");
+                speak(`Opening reply to the ${normalizedTarget} email`);
+                addToHistory(`Reply to ${normalizedTarget} email`, "Opened reply interface");
             } else {
-                speak(`Could not find the ${target} email`);
-                addToHistory(`Reply to ${target} email`, "No email found");
+                speak(`Could not find the ${normalizedTarget} email`);
+                addToHistory(`Reply to ${normalizedTarget} email`, "No email found");
             }
         }
-    }
-
-    async function handleSendCommand(to, subject, body) {
-        if (!to.includes('@')) {
-            speak("That doesn't look like a valid email address. Please try again.");
-            addToHistory(`Send email to ${to}`, "Invalid email address");
-            return;
-        }
-
-        const composeUrl = `https://mail.google.com/mail/u/0/#inbox?compose=new&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        window.open(composeUrl, "_self");
-        speak(`Opening email to ${to} with subject "${subject}"`);
-        addToHistory(`Send email to ${to}`, "Opened compose window");
     }
 
     async function handleDeleteCommand(position, folder) {
@@ -806,21 +885,17 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function executeCommand(transcript) {
-        let lowerTranscript = transcript.toLowerCase().trim();
         let now = Date.now();
         
-        // Skip if command was recently executed
         if (now - lastCommandTime < 3000) return;
         lastCommandTime = now;
 
-        // First try enhanced command parsing
-        const parsedCommand = parseCommand(lowerTranscript);
+        const parsedCommand = parseCommand(transcript);
         if (parsedCommand) {
             executeEnhancedCommand(parsedCommand);
             return;
         }
 
-        // Fall back to simple commands
         const simpleCommands = {
             "compose": ["compose", "new email", "write email"],
             "inbox": ["inbox", "open inbox", "check inbox"],
@@ -850,7 +925,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         };
 
         let matchedCommand = Object.keys(simpleCommands).find(command =>
-            simpleCommands[command].some(phrase => lowerTranscript.includes(phrase))
+            simpleCommands[command].some(phrase => transcript.toLowerCase().includes(phrase))
         );
 
         if (matchedCommand) {
@@ -889,9 +964,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         addToHistory(transcript, "Command not recognized");
     }
 
-    // Start listening immediately when the page loads
-    recognition.start();
-    
     recognition.onstart = () => {
         isListening = true;
         micIndicator.style.background = "green";
@@ -901,10 +973,15 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     recognition.onresult = (event) => {
         let result = event.results[event.results.length - 1][0];
-        let transcript = result.transcript.trim().toLowerCase();
+        let transcript = result.transcript.trim();
         let confidence = result.confidence;
 
         if (confidence < 0.7) return;
+
+        transcript = transcript.replace(/\s(at|and)\s/gi, '@')
+                              .replace(/\s(dot|doht|dought)\s/gi, '.')
+                              .replace(/\s(gmail|male|mail)\s/gi, 'gmail')
+                              .replace(/\s(com|calm|come|con)\b/gi, 'com');
 
         console.log("You said:", transcript);
         showPopup(transcript, isActive ? "ON" : "OFF");
@@ -912,7 +989,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
         let sleepCommands = ["sleep email", "stop email", "turn off email"];
 
-        if (wakeWords.some(word => transcript.includes(word))) {
+        if (wakeWords.some(word => transcript.toLowerCase().includes(word))) {
             isActive = true;
             wakeWordDetected = true;
             showPopup("Voice Control Activated", "ACTIVE");
@@ -921,7 +998,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return;
         }
 
-        if (sleepCommands.some(word => transcript.includes(word))) {
+        if (sleepCommands.some(word => transcript.toLowerCase().includes(word))) {
             isActive = false;
             wakeWordDetected = false;
             showPopup("Voice Control Deactivated", "SLEEP");
@@ -945,4 +1022,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     // Check auth status on page load
     checkAuthStatus();
+
+    // Start listening
+    recognition.start();
 }
