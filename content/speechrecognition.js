@@ -9,11 +9,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     recognition.lang = "en-US";
 
     let isActive = false;
-    let wakeWordDetected = false;
     let isListening = false;
-    let lastCommandTime = 0;
     let isAuthenticated = false;
-    const password = "fish"; // Voice password for authentication
+    const password = "fish"; // Voice authentication password
 
     // Floating Popup UI
     const popup = document.createElement("div");
@@ -70,7 +68,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const data = await response.json();
 
             if (data.error) {
-                console.warn("Access token expired. Attempting to refresh...");
+                console.warn("Access token expired. Refreshing...");
                 return await refreshAccessToken(refreshToken);
             }
 
@@ -168,53 +166,66 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         const commands = {
             "compose": ["compose", "new email", "write email"],
             "inbox": ["inbox", "open inbox", "check inbox"],
-            "readEmails": ["read my emails", "check my emails", "show unread emails"]
+            "sent": ["sent mail", "sent", "send", "sent messages"],
+            "drafts": ["drafts", "saved emails"],
+            "starred": ["starred", "important emails"],
+            "snoozed": ["snoozed", "snooze emails"],
+            "spam": ["spam", "junk mail"],
+            "trash": ["trash", "deleted emails"],
+            "all mail": ["all mail", "all messages"],
+            "important": ["important", "priority emails"],
+            "readEmails": ["read my emails", "read my email", "read latest emails", "check my emails", "show unread emails"]
         };
 
         const urls = {
             "compose": "https://mail.google.com/mail/u/0/#inbox?compose=new",
-            "inbox": "https://mail.google.com/mail/u/0/#inbox"
+            "inbox": "https://mail.google.com/mail/u/0/#inbox",
+            "sent": "https://mail.google.com/mail/u/0/#sent",
+            "drafts": "https://mail.google.com/mail/u/0/#drafts",
+            "starred": "https://mail.google.com/mail/u/0/#starred",
+            "snoozed": "https://mail.google.com/mail/u/0/#snoozed",
+            "spam": "https://mail.google.com/mail/u/0/#spam",
+            "trash": "https://mail.google.com/mail/u/0/#trash",
+            "all mail": "https://mail.google.com/mail/u/0/#all",
+            "important": "https://mail.google.com/mail/u/0/#important"
         };
 
-        let matchedCommand = Object.keys(commands).find(command =>
-            commands[command].some(phrase => lowerTranscript.includes(phrase))
-        );
-
-        if (matchedCommand) {
-            lastCommandTime = Date.now();
-            showPopup(`Opening ${matchedCommand}...`, "Processing");
-            speak(`Opening ${matchedCommand}`);
-
-            if (matchedCommand === "readEmails") {
-                fetchEmails();
+        for (const [command, phrases] of Object.entries(commands)) {
+            if (phrases.some(phrase => lowerTranscript.includes(phrase))) {
+                if (command === "readEmails") {
+                    fetchEmails();
+                } else {
+                    window.open(urls[command], "_blank");
+                    speak(`Opening ${command}`);
+                    showPopup(`Opening ${command}`, "ACTION");
+                }
                 return;
             }
-
-            setTimeout(() => {
-                window.open(urls[matchedCommand], "_self");
-            }, 1500);
-            return;
         }
 
-        showPopup("Command not recognized", "Error");
-        speak("I didn't understand that command.");
+        let responses = ["I didn't catch that. Try again?", "Can you repeat?", "I'm not sure what you meant."];
+        let randomResponse = responses[Math.floor(Math.random() * responses.length)];
+        showPopup(randomResponse, "Error");
+        speak(randomResponse);
     }
 
     function authenticateUser(command) {
-        if (command.includes("password") || command.includes("login")) {
+        if (command.includes("password") || command.includes("login") || command.includes("authenticate")) {
             speak("Please say your password now.");
             showPopup("Listening for password...", "AUTHENTICATION");
 
             recognition.onresult = (event) => {
-                let spokenPassword = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+                let result = event.results[event.results.length - 1][0];
+                let spokenPassword = result.transcript.trim().toLowerCase();
 
                 if (spokenPassword === password.toLowerCase()) {
                     isAuthenticated = true;
                     speak("Authentication successful. How can I assist you?");
                     showPopup("Authenticated successfully", "AUTHENTICATED");
+                    isActive = true;
                 } else {
                     speak("Incorrect password. Please try again.");
-                    showPopup("Incorrect password", "AUTH ERROR");
+                    showPopup("Incorrect password", "AUTHENTICATION ERROR");
                 }
             };
         }
@@ -228,7 +239,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return;
         }
 
-        if (isAuthenticated) {
+        if (isActive) {
             executeCommand(transcript);
         }
     };
