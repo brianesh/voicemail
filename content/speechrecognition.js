@@ -15,13 +15,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let isAuthenticated = false;
     let awaitingAuthResponse = false;
 
-    // OAuth Configuration - Using your actual credentials
+    // OAuth Configuration - Using environment variables
     const OAUTH_CONFIG = {
-        clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-        redirectUri: 'http://localhost:8080/callback',
+        clientId: process.env.GOOGLE_CLIENT_ID || '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
+        redirectUri: process.env.REDIRECT_URI || 'http://localhost:8080/callback',
         scope: 'https://www.googleapis.com/auth/gmail.readonly',
         authUrl: 'https://accounts.google.com/o/oauth2/auth',
-        tokenUrl: 'https://oauth2.googleapis.com/token'
+        tokenUrl: 'http://localhost:8080/auth/callback' // Using local server endpoint
     };
 
     // Floating Popup UI
@@ -81,10 +81,14 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
 
         try {
-            const response = await fetch("https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=" + accessToken);
+            const response = await fetch("http://localhost:8080/api/verify-token", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ token: accessToken })
+            });
             const data = await response.json();
 
-            if (data.error) {
+            if (!data.valid) {
                 console.warn("Access token expired. Attempting to refresh...");
                 return await refreshAccessToken(refreshToken);
             }
@@ -106,15 +110,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         try {
             const response = await fetch(OAUTH_CONFIG.tokenUrl, {
                 method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: new URLSearchParams({
-                    client_id: OAUTH_CONFIG.clientId,
-                    client_secret: "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",
-                    refresh_token: refreshToken,
-                    grant_type: "refresh_token"
-                }),
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ refresh_token: refreshToken })
             });
-
             const data = await response.json();
 
             if (data.access_token) {
@@ -133,16 +131,15 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function initiateOAuthLogin() {
-        const params = new URLSearchParams({
-            client_id: OAUTH_CONFIG.clientId,
-            redirect_uri: OAUTH_CONFIG.redirectUri,
-            response_type: 'code',
-            scope: OAUTH_CONFIG.scope,
-            access_type: 'offline',
-            prompt: 'consent'
-        });
-
-        window.location.href = `${OAUTH_CONFIG.authUrl}?${params.toString()}`;
+        fetch('http://localhost:8080/auth/url')
+            .then(res => res.json())
+            .then(({ authUrl }) => {
+                window.location.href = authUrl;
+            })
+            .catch(error => {
+                console.error("Failed to get auth URL:", error);
+                speak("Failed to start login process.");
+            });
     }
 
     async function fetchEmails() {
@@ -155,8 +152,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         if (!accessToken) return;
 
         try {
-            // Changed to use your server endpoint instead of direct Gmail API
-            const response = await fetch(`http://localhost:8080/api/emails?action=unread&token=${encodeURIComponent(accessToken)}`);
+            const response = await fetch(`http://localhost:8080/api/emails?token=${encodeURIComponent(accessToken)}`);
             const { emails, error } = await response.json();
 
             if (error) throw new Error(error);
@@ -268,12 +264,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             showPopup("Completing authentication...", "PROCESSING");
             speak("Completing your login...");
 
-            // Exchange code for tokens using your server
             fetch('http://localhost:8080/auth/callback', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code })
             })
             .then(response => response.json())
@@ -284,6 +277,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     isAuthenticated = true;
                     speak("Login successful. How can I help you?");
                     showPopup("Login successful", "AUTHENTICATED");
+                    
+                    // Clear the code from URL
+                    window.history.replaceState({}, document.title, window.location.pathname);
                 } else {
                     throw new Error('No tokens received');
                 }
@@ -297,7 +293,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     // Check for OAuth callback when page loads
-    if (window.location.pathname === '/callback') {
+    if (window.location.search.includes('code=')) {
         handleOAuthCallback();
     }
 
