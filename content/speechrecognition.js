@@ -8,6 +8,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
+    // State variables
     let isActive = true;
     let wakeWordDetected = true;
     let isListening = false;
@@ -15,6 +16,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let isAuthenticated = false;
     let speechQueue = [];
     let isSpeaking = false;
+    let apiCallTimestamps = [];
+    let isOnline = navigator.onLine;
+    let retryAttempts = 0;
+    const MAX_RETRIES = 2;
+    const API_RATE_LIMIT = 5; // Max API calls per minute
+    const API_TIMEOUT = 10000; // 10 seconds timeout
 
     // OAuth Configuration
     const OAUTH_CONFIG = {
@@ -24,7 +31,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         authUrl: 'https://accounts.google.com/o/oauth2/v2/auth'
     };
 
-    // Floating Popup UI
+    // UI Elements
     const popup = document.createElement("div");
     popup.id = "speech-popup";
     popup.style.cssText = `
@@ -44,7 +51,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     `;
     document.body.appendChild(popup);
 
-    // Add microphone indicator
     const micIndicator = document.createElement("div");
     micIndicator.id = "mic-indicator";
     micIndicator.style.cssText = `
@@ -60,7 +66,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     `;
     document.body.appendChild(micIndicator);
 
-    // Add command history display
     const commandHistory = document.createElement("div");
     commandHistory.id = "command-history";
     commandHistory.style.cssText = `
@@ -80,6 +85,82 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     `;
     document.body.appendChild(commandHistory);
 
+    // Network status monitoring
+    window.addEventListener('online', () => {
+        isOnline = true;
+        showPopup("Connection restored", "ONLINE");
+        speak("Connection restored. Ready for commands.");
+    });
+
+    window.addEventListener('offline', () => {
+        isOnline = false;
+        showPopup("Connection lost", "OFFLINE");
+        speak("I've lost internet connection. Please check your network.");
+    });
+
+    // Rate limiting check
+    function checkRateLimit() {
+        const now = Date.now();
+        // Remove timestamps older than 1 minute
+        apiCallTimestamps = apiCallTimestamps.filter(timestamp => now - timestamp < 60000);
+        
+        if (apiCallTimestamps.length >= API_RATE_LIMIT) {
+            const timeToWait = Math.ceil((apiCallTimestamps[0] + 60000 - now) / 1000);
+            throw new Error(`Too many requests. Please wait ${timeToWait} seconds before trying again.`);
+        }
+        
+        apiCallTimestamps.push(now);
+        return true;
+    }
+
+    // Enhanced fetch with timeout
+    async function fetchWithTimeout(resource, options = {}) {
+        const { timeout = API_TIMEOUT } = options;
+        
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeout);
+        
+        const response = await fetch(resource, {
+            ...options,
+            signal: controller.signal  
+        });
+        
+        clearTimeout(id);
+        return response;
+    }
+
+    // Retry wrapper for API calls
+    async function withRetry(fn, args, operationName) {
+        retryAttempts = 0;
+        
+        while (retryAttempts <= MAX_RETRIES) {
+            try {
+                if (!isOnline) {
+                    throw new Error("No internet connection available");
+                }
+                
+                checkRateLimit();
+                return await fn(...args);
+            } catch (error) {
+                retryAttempts++;
+                
+                if (retryAttempts > MAX_RETRIES) {
+                    console.error(`Failed after ${MAX_RETRIES} attempts for ${operationName}:`, error);
+                    throw error;
+                }
+                
+                // Exponential backoff
+                const delay = Math.pow(2, retryAttempts) * 1000;
+                await new Promise(resolve => setTimeout(resolve, delay));
+                
+                if (error.message.includes("Authentication")) {
+                    await ensureValidToken();
+                }
+            }
+        }
+    }
+
+    // UI Functions
     function showPopup(message, status) {
         popup.innerHTML = `<b>Status:</b> ${status} <br> <b>You said:</b> ${message}`;
         popup.style.display = "block";
@@ -109,6 +190,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         commandHistory.style.display = "block";
     }
 
+    // Speech Functions
     function processQueue() {
         if (speechQueue.length === 0 || isSpeaking) return;
         
@@ -141,6 +223,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
+    // Email Detection
     function containsEmail(text) {
         const emailPattern = /\b\w+(?:\s*(?:at|and)\s*\w+(?:\s*(?:dot|doht|dought)\s*(?:com|org|net|edu|gov|co|in|io)\b))/gi;
         const match = text.match(emailPattern);
@@ -158,6 +241,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         return null;
     }
 
+    // Authentication Functions
     function checkAuthStatus() {
         const accessToken = localStorage.getItem("access_token");
         const expiresAt = localStorage.getItem("expires_at");
@@ -176,7 +260,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
         
         initiateOAuthLogin();
-        throw new Error("Authentication required");
+        throw new Error("Authentication required. Please log in.");
     }
 
     async function refreshToken() {
@@ -187,17 +271,25 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
         
         try {
-            const response = await fetch('https://oauth2.googleapis.com/token', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: new URLSearchParams({
-                    client_id: OAUTH_CONFIG.clientId,
-                    grant_type: 'refresh_token',
-                    refresh_token: refreshToken
-                })
-            });
+            const response = await withRetry(
+                fetchWithTimeout,
+                [
+                    'https://oauth2.googleapis.com/token',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: new URLSearchParams({
+                            client_id: OAUTH_CONFIG.clientId,
+                            grant_type: 'refresh_token',
+                            refresh_token: refreshToken
+                        }),
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "refreshToken"
+            );
             
             const data = await response.json();
             if (data.error) throw new Error(data.error);
@@ -245,25 +337,33 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         const storedState = sessionStorage.getItem('oauth_state');
         if (state !== storedState) {
             console.error('State mismatch');
-            speak("Login failed. Security error.");
+            speak("Login failed due to security error.");
             return;
         }
         sessionStorage.removeItem('oauth_state');
 
         if (code) {
             try {
-                const response = await fetch('https://oauth2.googleapis.com/token', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    body: new URLSearchParams({
-                        code: code,
-                        client_id: OAUTH_CONFIG.clientId,
-                        redirect_uri: OAUTH_CONFIG.redirectUri,
-                        grant_type: 'authorization_code'
-                    })
-                });
+                const response = await withRetry(
+                    fetchWithTimeout,
+                    [
+                        'https://oauth2.googleapis.com/token',
+                        {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded'
+                            },
+                            body: new URLSearchParams({
+                                code: code,
+                                client_id: OAUTH_CONFIG.clientId,
+                                redirect_uri: OAUTH_CONFIG.redirectUri,
+                                grant_type: 'authorization_code'
+                            }),
+                            timeout: API_TIMEOUT
+                        }
+                    ],
+                    "tokenExchange"
+                );
                 
                 const data = await response.json();
                 if (data.error) throw new Error(data.error);
@@ -289,20 +389,30 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         handleOAuthResponse();
     }
 
+    // Email Operations
     async function fetchEmails() {
         try {
             const accessToken = await ensureValidToken();
             showPopup("Fetching your emails...", "PROCESSING");
             
-            const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=3&q=is:unread`, {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                }
-            });
+            const response = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=3&q=is:unread`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "fetchEmails"
+            );
             
             const data = await response.json();
-            if (data.error) throw new Error(data.error.message);
+            if (data.error) throw new Error(data.error.message || "Failed to fetch emails");
+            
             if (!data.messages || data.messages.length === 0) {
                 speak("You have no new emails.");
                 showPopup("No new emails", "INFO");
@@ -310,9 +420,17 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             }
 
             const email = data.messages[0];
-            const emailResponse = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${email.id}`, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
+            const emailResponse = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${email.id}`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "fetchEmailContent"
+            );
             
             const emailData = await emailResponse.json();
             const headers = emailData.payload.headers;
@@ -326,24 +444,39 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             
         } catch (error) {
             console.error("Error fetching emails:", error);
+            
+            let errorMessage = "Sorry, I couldn't fetch your emails.";
             if (error.message.includes("Invalid Credentials") || error.message.includes("token expired")) {
+                errorMessage = "Your session expired. Please log in again.";
                 localStorage.removeItem('access_token');
                 localStorage.removeItem('expires_at');
-                speak("Your session expired. Please log in again.");
-                showPopup("Session expired. Please login again.", "ERROR");
-            } else {
-                speak("Sorry, I couldn't fetch your emails.");
-                showPopup("Error fetching emails", "ERROR");
+            } else if (error.message.includes("Too many requests")) {
+                errorMessage = error.message;
+            } else if (!isOnline) {
+                errorMessage = "No internet connection available.";
+            } else if (error.name === "AbortError") {
+                errorMessage = "Request timed out. Please try again.";
             }
+            
+            speak(errorMessage);
+            showPopup(errorMessage, "ERROR");
         }
     }
 
     async function findMessageIdByPosition(position) {
         try {
             const accessToken = await ensureValidToken();
-            const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10`, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
+            const response = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "findMessageByPosition"
+            );
             
             const data = await response.json();
             if (!data.messages?.length) return null;
@@ -357,6 +490,15 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return data.messages[index].id;
         } catch (error) {
             console.error('Error finding message:', error);
+            
+            let errorMessage = "Failed to find email.";
+            if (error.message.includes("Authentication")) {
+                errorMessage = "Authentication required. Please log in.";
+            } else if (!isOnline) {
+                errorMessage = "No internet connection available.";
+            }
+            
+            speak(errorMessage);
             return null;
         }
     }
@@ -373,9 +515,17 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             };
             const labelId = folderMap[folder.toLowerCase()] || 'INBOX';
             
-            const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&labelIds=${labelId}`, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
+            const response = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&labelIds=${labelId}`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "findMessageByPositionAndFolder"
+            );
             
             const data = await response.json();
             if (!data.messages?.length) return null;
@@ -389,6 +539,15 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return data.messages[index].id;
         } catch (error) {
             console.error('Error finding message:', error);
+            
+            let errorMessage = "Failed to find email.";
+            if (error.message.includes("Authentication")) {
+                errorMessage = "Authentication required. Please log in.";
+            } else if (!isOnline) {
+                errorMessage = "No internet connection available.";
+            }
+            
+            speak(errorMessage);
             return null;
         }
     }
@@ -396,14 +555,31 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     async function findMessageIdBySender(email) {
         try {
             const accessToken = await ensureValidToken();
-            const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1&q=from:${encodeURIComponent(email)}`, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
+            const response = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1&q=from:${encodeURIComponent(email)}`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "findMessageBySender"
+            );
             
             const data = await response.json();
             return data.messages?.[0]?.id || null;
         } catch (error) {
             console.error('Error finding message by sender:', error);
+            
+            let errorMessage = "Failed to find email.";
+            if (error.message.includes("Authentication")) {
+                errorMessage = "Authentication required. Please log in.";
+            } else if (!isOnline) {
+                errorMessage = "No internet connection available.";
+            }
+            
+            speak(errorMessage);
             return null;
         }
     }
@@ -431,16 +607,24 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             
             const base64Email = btoa(rawEmail).replace(/\+/g, '-').replace(/\//g, '_');
             
-            const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/send`, {
-                method: "POST",
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    raw: base64Email
-                })
-            });
+            const response = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`,
+                    {
+                        method: "POST",
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            raw: base64Email
+                        }),
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "sendEmail"
+            );
             
             const data = await response.json();
             speak("Email sent successfully");
@@ -448,8 +632,22 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return data;
         } catch (error) {
             console.error("Error sending email:", error);
-            speak("Failed to send email");
-            addToHistory("Send email", "Failed to send email");
+            
+            let errorMessage = "Failed to send email.";
+            if (error.message.includes("Invalid Credentials") || error.message.includes("token expired")) {
+                errorMessage = "Your session expired. Please log in again.";
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('expires_at');
+            } else if (error.message.includes("Too many requests")) {
+                errorMessage = error.message;
+            } else if (!isOnline) {
+                errorMessage = "No internet connection available.";
+            } else if (error.name === "AbortError") {
+                errorMessage = "Request timed out. Please try again.";
+            }
+            
+            speak(errorMessage);
+            addToHistory("Send email", errorMessage);
             throw error;
         }
     }
@@ -457,23 +655,43 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     async function archiveEmail(messageId) {
         try {
             const accessToken = await ensureValidToken();
-            await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`, {
-                method: "POST",
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    removeLabelIds: ['INBOX']
-                })
-            });
+            await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
+                    {
+                        method: "POST",
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            removeLabelIds: ['INBOX']
+                        }),
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "archiveEmail"
+            );
             
             speak("Email archived");
             addToHistory(`Archive email ${messageId}`, "Email archived");
         } catch (error) {
             console.error("Error archiving email:", error);
-            speak("Failed to archive email");
-            addToHistory(`Archive email ${messageId}`, "Failed to archive");
+            
+            let errorMessage = "Failed to archive email.";
+            if (error.message.includes("Invalid Credentials") || error.message.includes("token expired")) {
+                errorMessage = "Your session expired. Please log in again.";
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('expires_at');
+            } else if (!isOnline) {
+                errorMessage = "No internet connection available.";
+            } else if (error.name === "AbortError") {
+                errorMessage = "Request timed out. Please try again.";
+            }
+            
+            speak(errorMessage);
+            addToHistory(`Archive email ${messageId}`, errorMessage);
             throw error;
         }
     }
@@ -483,24 +701,44 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const accessToken = await ensureValidToken();
             const action = read ? "read" : "unread";
             
-            await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`, {
-                method: "POST",
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    removeLabelIds: read ? ['UNREAD'] : [],
-                    addLabelIds: read ? [] : ['UNREAD']
-                })
-            });
+            await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
+                    {
+                        method: "POST",
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            removeLabelIds: read ? ['UNREAD'] : [],
+                            addLabelIds: read ? [] : ['UNREAD']
+                        }),
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "markAsRead"
+            );
             
             speak(`Email marked as ${action}`);
             addToHistory(`Mark email as ${action}`, "Status updated");
         } catch (error) {
             console.error(`Error marking email as ${read ? 'read' : 'unread'}:`, error);
-            speak(`Failed to mark email as ${action}`);
-            addToHistory(`Mark email as ${action}`, "Failed to update status");
+            
+            let errorMessage = `Failed to mark email as ${action}.`;
+            if (error.message.includes("Invalid Credentials") || error.message.includes("token expired")) {
+                errorMessage = "Your session expired. Please log in again.";
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('expires_at');
+            } else if (!isOnline) {
+                errorMessage = "No internet connection available.";
+            } else if (error.name === "AbortError") {
+                errorMessage = "Request timed out. Please try again.";
+            }
+            
+            speak(errorMessage);
+            addToHistory(`Mark email as ${action}`, errorMessage);
             throw error;
         }
     }
@@ -508,19 +746,39 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     async function deleteEmail(messageId) {
         try {
             const accessToken = await ensureValidToken();
-            await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/trash`, {
-                method: "POST",
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`
-                }
-            });
+            await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/trash`,
+                    {
+                        method: "POST",
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "deleteEmail"
+            );
             
             speak("Email moved to trash");
             addToHistory(`Delete email ${messageId}`, "Email deleted");
         } catch (error) {
             console.error("Error deleting email:", error);
-            speak("Failed to delete email");
-            addToHistory(`Delete email ${messageId}`, "Failed to delete");
+            
+            let errorMessage = "Failed to delete email.";
+            if (error.message.includes("Invalid Credentials") || error.message.includes("token expired")) {
+                errorMessage = "Your session expired. Please log in again.";
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('expires_at');
+            } else if (!isOnline) {
+                errorMessage = "No internet connection available.";
+            } else if (error.name === "AbortError") {
+                errorMessage = "Request timed out. Please try again.";
+            }
+            
+            speak(errorMessage);
+            addToHistory(`Delete email ${messageId}`, errorMessage);
             throw error;
         }
     }
@@ -528,9 +786,17 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     async function readFullEmail(messageId) {
         try {
             const accessToken = await ensureValidToken();
-            const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
+            const response = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "readFullEmail"
+            );
             
             const emailData = await response.json();
             const headers = emailData.payload.headers;
@@ -557,9 +823,21 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             
         } catch (error) {
             console.error("Error reading email:", error);
-            speak("Sorry, I couldn't read that email.");
+            
+            let errorMessage = "Sorry, I couldn't read that email.";
+            if (error.message.includes("Invalid Credentials") || error.message.includes("token expired")) {
+                errorMessage = "Your session expired. Please log in again.";
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('expires_at');
+            } else if (!isOnline) {
+                errorMessage = "No internet connection available.";
+            } else if (error.name === "AbortError") {
+                errorMessage = "Request timed out. Please try again.";
+            }
+            
+            speak(errorMessage);
             showPopup("Error reading email", "ERROR");
-            addToHistory(`Read email ${messageId}`, "Failed to read email");
+            addToHistory(`Read email ${messageId}`, errorMessage);
         }
     }
 
@@ -575,34 +853,62 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             };
             const labelId = labelMap[folder.toLowerCase()] || 'INBOX';
             
-            const listResponse = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=${labelId}`, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
+            const listResponse = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=${labelId}`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "listEmailsInFolder"
+            );
             
             const listData = await listResponse.json();
             if (!listData.messages || listData.messages.length === 0) return;
             
             const messageIds = listData.messages.map(msg => msg.id);
             
-            await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    ids: messageIds,
-                    removeLabelIds: read ? ['UNREAD'] : [],
-                    addLabelIds: read ? [] : ['UNREAD']
-                })
-            });
+            await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            ids: messageIds,
+                            removeLabelIds: read ? ['UNREAD'] : [],
+                            addLabelIds: read ? [] : ['UNREAD']
+                        }),
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "markAllEmailsInFolder"
+            );
             
             speak(`Marked all emails in ${folder} as ${read ? 'read' : 'unread'}`);
             addToHistory(`Mark all emails in ${folder}`, `Status updated to ${read ? 'read' : 'unread'}`);
         } catch (error) {
             console.error('Error marking all emails:', error);
-            speak("Failed to mark emails");
-            addToHistory("Mark all emails", "Failed to update status");
+            
+            let errorMessage = "Failed to mark emails.";
+            if (error.message.includes("Invalid Credentials") || error.message.includes("token expired")) {
+                errorMessage = "Your session expired. Please log in again.";
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('expires_at');
+            } else if (!isOnline) {
+                errorMessage = "No internet connection available.";
+            } else if (error.name === "AbortError") {
+                errorMessage = "Request timed out. Please try again.";
+            }
+            
+            speak(errorMessage);
+            addToHistory("Mark all emails", errorMessage);
             throw error;
         }
     }
@@ -626,34 +932,62 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const dateStr = formatDateForQuery(targetDate);
             const nextDateStr = formatDateForQuery(nextDay);
             
-            const listResponse = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=after:${dateStr} before:${nextDateStr}`, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
+            const listResponse = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=after:${dateStr} before:${nextDateStr}`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "listEmailsByDay"
+            );
             
             const listData = await listResponse.json();
             if (!listData.messages || listData.messages.length === 0) return;
             
             const messageIds = listData.messages.map(msg => msg.id);
             
-            await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    ids: messageIds,
-                    removeLabelIds: read ? ['UNREAD'] : [],
-                    addLabelIds: read ? [] : ['UNREAD']
-                })
-            });
+            await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            ids: messageIds,
+                            removeLabelIds: read ? ['UNREAD'] : [],
+                            addLabelIds: read ? [] : ['UNREAD']
+                        }),
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "markEmailsByDay"
+            );
             
             speak(`Marked emails from ${day} as ${read ? 'read' : 'unread'}`);
             addToHistory(`Mark emails from ${day}`, `Status updated to ${read ? 'read' : 'unread'}`);
         } catch (error) {
             console.error('Error marking emails by day:', error);
-            speak("Failed to mark emails");
-            addToHistory("Mark emails by day", "Failed to update status");
+            
+            let errorMessage = "Failed to mark emails.";
+            if (error.message.includes("Invalid Credentials") || error.message.includes("token expired")) {
+                errorMessage = "Your session expired. Please log in again.";
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('expires_at');
+            } else if (!isOnline) {
+                errorMessage = "No internet connection available.";
+            } else if (error.name === "AbortError") {
+                errorMessage = "Request timed out. Please try again.";
+            }
+            
+            speak(errorMessage);
+            addToHistory("Mark emails by day", errorMessage);
             throw error;
         }
     }
@@ -665,6 +999,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         return `${year}/${month}/${day}`;
     }
 
+    // Command Parsing
     function parseCommand(transcript) {
         const lowerTranscript = transcript.toLowerCase().trim();
         const emailInCommand = containsEmail(lowerTranscript);
@@ -753,6 +1088,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         return null;
     }
 
+    // Command Handlers
     async function handleEmailAddressCommand(email) {
         const normalizedEmail = email.replace(/\s*(at|and)\s*/gi, '@')
                                    .replace(/\s*(dot|doht|dought)\s*/gi, '.')
@@ -808,6 +1144,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
+    async function handleSendCommand(to, subject, body) {
+        await sendEmail(to, subject, body);
+    }
+
     async function handleDeleteCommand(position, folder) {
         const messageId = await findMessageIdByPositionAndFolder(position, folder);
         if (messageId) {
@@ -857,8 +1197,15 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     async function executeEnhancedCommand(parsedCommand) {
         try {
             if (!parsedCommand) {
-                throw new Error("No command parsed");
+                throw new Error("I didn't understand that command. Please try again.");
             }
+
+            if (!isOnline) {
+                throw new Error("No internet connection available. Please check your network.");
+            }
+
+            // Ensure we're authenticated before proceeding
+            await ensureValidToken();
 
             switch (parsedCommand.action) {
                 case 'reply':
@@ -883,13 +1230,31 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     await handleEmailAddressCommand(parsedCommand.email);
                     break;
                 default:
-                    throw new Error("Unrecognized command");
+                    throw new Error("I don't know how to handle that command yet.");
             }
         } catch (error) {
             console.error("Command execution error:", error);
-            const errorMessage = error.response?.data?.error?.message || error.message;
+            
+            let errorMessage = error.response?.data?.error?.message || error.message;
+            
+            // Special handling for specific error types
+            if (error.message.includes("Too many requests")) {
+                errorMessage = error.message;
+            } else if (error.message.includes("Authentication")) {
+                errorMessage = "Please log in to continue.";
+            } else if (!isOnline) {
+                errorMessage = "No internet connection available.";
+            } else if (error.name === "AbortError") {
+                errorMessage = "Request timed out. Please try again.";
+            }
+            
             speak(`Error: ${errorMessage}`);
             addToHistory("Command failed", errorMessage);
+            
+            // For network errors, suggest retrying
+            if (!isOnline || error.name === "AbortError") {
+                speak("You can try again when you're back online.");
+            }
         }
     }
 
@@ -968,6 +1333,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         addToHistory(transcript, "Command not recognized");
     }
 
+    // Recognition handlers
     recognition.onstart = () => {
         isListening = true;
         micIndicator.style.background = "green";
@@ -1024,9 +1390,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     };
 
-    // Check auth status on page load
+    // Initialize
     checkAuthStatus();
-
-    // Start listening
     recognition.start();
 }
