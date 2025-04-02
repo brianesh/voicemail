@@ -125,21 +125,23 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function containsEmail(text) {
-        // Simple and reliable email pattern for speech recognition
-        const emailPattern = /(\b\w+(?:\s*(?:at|and)\s*\w+(?:\s*(?:dot|doht|dought)\s*(?:com|org|net|edu|gov|co|in|io)\b)/gi;
-        const match = text.match(emailPattern);
+        // Corrected email pattern
+        const emailPattern = /\b\w+(?:\s*(?:at|and)\s*\w+(?:\s*(?:dot|doht|dought)\s*(?:com|org|net|edu|gov|co|in|io)\b))/gi;
         
+        const match = text.match(emailPattern);
         if (!match) return null;
         
-        // Convert speech patterns to proper email format
+        // Normalize the email format
         const potentialEmail = match[0]
             .replace(/\s*(at|and)\s*/gi, '@')
             .replace(/\s*(dot|doht|dought)\s*/gi, '.')
             .replace(/\s+/g, '')
             .toLowerCase();
         
-        // Basic validation
-        if (potentialEmail.includes('@') && potentialEmail.includes('.') && potentialEmail.length > 5) {
+        // Validate basic email structure
+        if (potentialEmail.includes('@') && 
+            potentialEmail.includes('.') && 
+            potentialEmail.length > 5) {
             return potentialEmail;
         }
         return null;
