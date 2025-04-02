@@ -14,6 +14,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let lastCommandTime = 0;
     let isAuthenticated = false;
     const password = "fish";
+    let awaitingPassword = false;
 
     // Floating Popup UI
     const popup = document.createElement("div");
@@ -118,6 +119,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     async function fetchEmails() {
+        if (!isAuthenticated) {
+            speak("Please authenticate first by saying 'password'");
+            return;
+        }
+
         let accessToken = await getAccessToken();
         if (!accessToken) return;
 
@@ -205,6 +211,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             speak(`Opening ${matchedCommand}`);
 
             if (matchedCommand === "readEmails") {
+                if (!isAuthenticated) {
+                    speak("Please authenticate first by saying 'password'");
+                    return;
+                }
                 showPopup("Fetching your latest emails...", "PROCESSING");
                 speak("Fetching your latest emails...");
                 fetchEmails();
@@ -223,27 +233,19 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         speak(randomResponse);
     }
 
-    function authenticateUser(command) {
-        if (command.includes("password") || command.includes("login") || command.includes("authenticate")) {
-            speak("Please say your password now.");
-            showPopup("Listening for password...", "AUTHENTICATION");
-    
-            recognition.onresult = (event) => {
-                let result = event.results[event.results.length - 1][0];
-                let spokenPassword = result.transcript.trim().toLowerCase();
-    
-                if (spokenPassword === password.toLowerCase()) {
-                    isAuthenticated = true;
-                    speak("Authentication successful. How can I assist you?");
-                    showPopup("Authenticated successfully", "AUTHENTICATED");
-    
-                    // Proceed to email commands after authentication
-                    isActive = true;
-                } else {
-                    speak("Incorrect password. Please try again.");
-                    showPopup("Incorrect password", "AUTHENTICATION ERROR");
-                }
-            };
+    function handleAuthentication(transcript) {
+        let spokenPassword = transcript.trim().toLowerCase();
+        
+        if (spokenPassword === password.toLowerCase()) {
+            isAuthenticated = true;
+            awaitingPassword = false;
+            speak("Authentication successful. How can I assist you?");
+            showPopup("Authenticated successfully", "AUTHENTICATED");
+            isActive = true;
+        } else {
+            speak("Incorrect password. Please try again by saying 'password'");
+            showPopup("Incorrect password", "AUTHENTICATION ERROR");
+            awaitingPassword = false;
         }
     }
 
@@ -267,10 +269,17 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
         let sleepCommands = ["sleep email", "stop email", "turn off email"];
-        let authCommand = ["password", "login", "authenticate"];
+        let authCommand = "password";
 
-        if (authCommand.some(word => transcript.includes(word))) {
-            authenticateUser(transcript);
+        if (awaitingPassword) {
+            handleAuthentication(transcript);
+            return;
+        }
+
+        if (transcript.includes(authCommand)) {
+            speak("Please say your password now.");
+            showPopup("Listening for password...", "AUTHENTICATION");
+            awaitingPassword = true;
             return;
         }
 
