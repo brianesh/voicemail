@@ -12,13 +12,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let wakeWordDetected = false;
     let isListening = false;
     let lastCommandTime = 0;
-    let isAuthenticated = false; // Variable to track authentication
-    const password = "fish"; // Voice password for authentication
+    let isAuthenticated = false;
+    const password = "fish";
 
     // Floating Popup UI
     const popup = document.createElement("div");
     popup.id = "speech-popup";
-    popup.style.cssText = 
+    popup.style.cssText = `
         position: fixed;
         bottom: 20px;
         right: 20px;
@@ -32,11 +32,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         z-index: 9999;
         box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.3);
         transition: opacity 0.5s ease-in-out;
-    ;
+    `;
     document.body.appendChild(popup);
 
     function showPopup(message, status) {
-        popup.innerHTML = <b>Status:</b> ${status} <br> <b>You said:</b> ${message};
+        popup.innerHTML = `<b>Status:</b> ${status} <br> <b>You said:</b> ${message}`;
         popup.style.display = "block";
         popup.style.opacity = "1";
 
@@ -65,7 +65,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return null;
         }
 
-        // Verify if the token is still valid
         try {
             const response = await fetch("https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=" + accessToken);
             const data = await response.json();
@@ -126,8 +125,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const response = await fetch("https://www.googleapis.com/gmail/v1/users/me/messages?q=is:unread", {
                 method: "GET",
                 headers: {
-                    Authorization: Bearer ${accessToken},
-                    Accept: "application/json",
+                    "Authorization": `Bearer ${accessToken}`,
+                    "Accept": "application/json",
                 }
             });
 
@@ -139,11 +138,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             }
 
             for (const email of data.messages.slice(0, 3)) {
-                const emailResponse = await fetch(https://www.googleapis.com/gmail/v1/users/me/messages/${email.id}, {
+                const emailResponse = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${email.id}`, {
                     method: "GET",
                     headers: {
-                        Authorization: Bearer ${accessToken},
-                        Accept: "application/json",
+                        "Authorization": `Bearer ${accessToken}`,
+                        "Accept": "application/json",
                     }
                 });
 
@@ -152,7 +151,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 const subject = headers.find(header => header.name === "Subject")?.value || "No Subject";
                 const from = headers.find(header => header.name === "From")?.value || "Unknown Sender";
 
-                let message = Email from ${from}. Subject: ${subject};
+                let message = `Email from ${from}. Subject: ${subject}`;
                 speak(message);
                 showPopup(message, "EMAIL");
             }
@@ -202,8 +201,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             if (now - lastCommandTime < 3000) return;
 
             lastCommandTime = now;
-            showPopup(Opening ${matchedCommand}..., "Processing");
-            speak(Opening ${matchedCommand});
+            showPopup(`Opening ${matchedCommand}...`, "Processing");
+            speak(`Opening ${matchedCommand}`);
 
             if (matchedCommand === "readEmails") {
                 showPopup("Fetching your latest emails...", "PROCESSING");
@@ -239,15 +238,18 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     showPopup("Authenticated successfully", "AUTHENTICATED");
     
                     // Proceed to email commands after authentication
-                    isActive = true; // Activate the assistant
+                    isActive = true;
                 } else {
                     speak("Incorrect password. Please try again.");
                     showPopup("Incorrect password", "AUTHENTICATION ERROR");
                 }
             };
         }
-    }       
+    }
 
+    // Start listening immediately when the page loads
+    recognition.start();
+    
     recognition.onstart = () => {
         isListening = true;
         showPopup("Listening...", "ON");
@@ -295,10 +297,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     recognition.onend = () => {
         isListening = false;
-        if (wakeWordDetected) {
+        if (wakeWordDetected || !isActive) {
             setTimeout(() => recognition.start(), 1000);
         }
     };
-
-    recognition.start();
 }
