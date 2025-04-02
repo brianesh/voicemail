@@ -14,10 +14,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let lastCommandTime = 0;
     let isAuthenticated = false;
 
-    // OAuth Configuration - Using your own domain for redirect
+    // OAuth Configuration - MUST match your Google Cloud Console settings
     const OAUTH_CONFIG = {
         clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-        redirectUri: window.location.origin, // Must be your own domain
+        redirectUri: window.location.origin, // Must match your registered URI
         scope: 'https://www.googleapis.com/auth/gmail.readonly',
         authUrl: 'https://accounts.google.com/o/oauth2/v2/auth'
     };
@@ -70,7 +70,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function initiateOAuthLogin() {
-        // Store the Gmail URL we want to redirect to after auth
+        // First verify the redirect URI
+        console.log("Using redirect URI:", OAUTH_CONFIG.redirectUri);
+        
+        // Store where to redirect after auth
         sessionStorage.setItem('postAuthRedirect', 'https://mail.google.com/mail/u/0/#inbox');
         
         const params = new URLSearchParams({
@@ -103,8 +106,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             localStorage.setItem('expires_at', expiresAt);
             isAuthenticated = true;
             
-            // Redirect to Gmail after storing token
-            const redirectUrl = sessionStorage.getItem('postAuthRedirect') || 'https://mail.google.com/mail/u/0/#inbox';
+            // Redirect to Gmail after auth
+            const redirectUrl = sessionStorage.getItem('postAuthRedirect') || 'https://mail.google.com';
             window.location.href = redirectUrl;
         }
     }
