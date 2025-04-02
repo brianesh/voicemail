@@ -215,8 +215,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             showPopup("Listening for password...", "AUTHENTICATION");
 
             recognition.onresult = (event) => {
-                let result = event.results[event.results.length - 1][0];
-                let spokenPassword = result.transcript.trim().toLowerCase();
+                let spokenPassword = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
 
                 if (spokenPassword === password.toLowerCase()) {
                     isAuthenticated = true;
@@ -233,12 +232,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     recognition.onresult = (event) => {
         let transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
-
         if (transcript.includes("password") || transcript.includes("login")) {
             authenticateUser(transcript);
             return;
         }
-
         if (isActive) {
             executeCommand(transcript);
         }
