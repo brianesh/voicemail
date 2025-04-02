@@ -12,7 +12,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let wakeWordDetected = false;
     let isListening = false;
     let lastCommandTime = 0;
-    let isAuthenticated = false; // Variable to track authentication
+    let isAuthenticated = false;
     const password = "fish"; // Voice password for authentication
 
     // Floating Popup UI
@@ -65,9 +65,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return null;
         }
 
-        // Verify if the token is still valid
         try {
-            const response = await fetch("https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=" + accessToken);
+            const response = await fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${accessToken}`);
             const data = await response.json();
 
             if (data.error) {
@@ -169,28 +168,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         const commands = {
             "compose": ["compose", "new email", "write email"],
             "inbox": ["inbox", "open inbox", "check inbox"],
-            "sent": ["sent mail", "sent", "send", "sent messages"],
-            "drafts": ["drafts", "saved emails"],
-            "starred": ["starred", "important emails"],
-            "snoozed": ["snoozed", "snooze emails"],
-            "spam": ["spam", "junk mail"],
-            "trash": ["trash", "deleted emails"],
-            "all mail": ["all mail", "all messages"],
-            "important": ["important", "priority emails"],
-            "readEmails": ["read my emails", "read my email", "read latest emails", "check my emails", "show unread emails"]
+            "readEmails": ["read my emails", "check my emails", "show unread emails"]
         };
 
         const urls = {
             "compose": "https://mail.google.com/mail/u/0/#inbox?compose=new",
-            "inbox": "https://mail.google.com/mail/u/0/#inbox",
-            "sent": "https://mail.google.com/mail/u/0/#sent",
-            "drafts": "https://mail.google.com/mail/u/0/#drafts",
-            "starred": "https://mail.google.com/mail/u/0/#starred",
-            "snoozed": "https://mail.google.com/mail/u/0/#snoozed",
-            "spam": "https://mail.google.com/mail/u/0/#spam",
-            "trash": "https://mail.google.com/mail/u/0/#trash",
-            "all mail": "https://mail.google.com/mail/u/0/#all",
-            "important": "https://mail.google.com/mail/u/0/#important"
+            "inbox": "https://mail.google.com/mail/u/0/#inbox"
         };
 
         let matchedCommand = Object.keys(commands).find(command =>
@@ -198,16 +181,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         );
 
         if (matchedCommand) {
-            let now = Date.now();
-            if (now - lastCommandTime < 3000) return;
-
-            lastCommandTime = now;
+            lastCommandTime = Date.now();
             showPopup(`Opening ${matchedCommand}...`, "Processing");
             speak(`Opening ${matchedCommand}`);
 
             if (matchedCommand === "readEmails") {
-                showPopup("Fetching your latest emails...", "PROCESSING");
-                speak("Fetching your latest emails...");
                 fetchEmails();
                 return;
             }
@@ -218,85 +196,40 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return;
         }
 
-        let responses = ["I didn't catch that. Try again?", "Can you repeat?", "I'm not sure what you meant."];
-        let randomResponse = responses[Math.floor(Math.random() * responses.length)];
-        showPopup(randomResponse, "Error");
-        speak(randomResponse);
+        showPopup("Command not recognized", "Error");
+        speak("I didn't understand that command.");
     }
 
     function authenticateUser(command) {
-        if (command.includes("password") || command.includes("login") || command.includes("authenticate")) {
+        if (command.includes("password") || command.includes("login")) {
             speak("Please say your password now.");
             showPopup("Listening for password...", "AUTHENTICATION");
-    
+
             recognition.onresult = (event) => {
-                let result = event.results[event.results.length - 1][0];
-                let spokenPassword = result.transcript.trim().toLowerCase();
-    
+                let spokenPassword = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+
                 if (spokenPassword === password.toLowerCase()) {
                     isAuthenticated = true;
                     speak("Authentication successful. How can I assist you?");
                     showPopup("Authenticated successfully", "AUTHENTICATED");
-    
-                    // Proceed to email commands after authentication
-                    isActive = true; // Activate the assistant
                 } else {
                     speak("Incorrect password. Please try again.");
-                    showPopup("Incorrect password", "AUTHENTICATION ERROR");
+                    showPopup("Incorrect password", "AUTH ERROR");
                 }
             };
         }
-    }       
-
-    recognition.onstart = () => {
-        isListening = true;
-        showPopup("Listening...", "ON");
-    };
+    }
 
     recognition.onresult = (event) => {
-        let result = event.results[event.results.length - 1][0];
-        let transcript = result.transcript.trim().toLowerCase();
-        let confidence = result.confidence;
+        let transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
 
-        if (confidence < 0.7) return;
-
-        console.log("You said:", transcript);
-        showPopup(transcript, isActive ? "ON" : "OFF");
-
-        let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
-        let sleepCommands = ["sleep email", "stop email", "turn off email"];
-        let authCommand = ["password", "login", "authenticate"];
-
-        if (authCommand.some(word => transcript.includes(word))) {
+        if (transcript.includes("password") || transcript.includes("login")) {
             authenticateUser(transcript);
             return;
         }
 
-        if (wakeWords.some(word => transcript.includes(word))) {
-            isActive = true;
-            wakeWordDetected = true;
-            showPopup("Voice Control Activated", "ACTIVE");
-            speak("Voice control activated. How can I assist?");
-            return;
-        }
-
-        if (sleepCommands.some(word => transcript.includes(word))) {
-            isActive = false;
-            wakeWordDetected = false;
-            showPopup("Voice Control Deactivated", "SLEEP");
-            speak("Voice control deactivated. Say 'Hey email' to reactivate.");
-            return;
-        }
-
-        if (isActive) {
+        if (isAuthenticated) {
             executeCommand(transcript);
-        }
-    };
-
-    recognition.onend = () => {
-        isListening = false;
-        if (wakeWordDetected) {
-            setTimeout(() => recognition.start(), 1000);
         }
     };
 
