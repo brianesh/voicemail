@@ -13,14 +13,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let isListening = false;
     let lastCommandTime = 0;
     let isAuthenticated = false;
-    let awaitingAuthResponse = false;
 
-    // OAuth Configuration - Using implicit flow for client-side only
+    // OAuth Configuration - Using implicit flow
     const OAUTH_CONFIG = {
         clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-        redirectUri: window.location.origin, // Redirect back to current page
+        redirectUri: 'https://mail.google.com/mail/u/0/#inbox', // Directly to Gmail inbox
         scope: 'https://www.googleapis.com/auth/gmail.readonly',
-        authUrl: 'https://accounts.google.com/o/oauth2/auth'
+        authUrl: 'https://accounts.google.com/o/oauth2/v2/auth'
     };
 
     // Floating Popup UI
@@ -71,16 +70,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function initiateOAuthLogin() {
-        // Store current page before redirecting
-        sessionStorage.setItem('preAuthPage', window.location.href);
-        
         const params = new URLSearchParams({
             client_id: OAUTH_CONFIG.clientId,
             redirect_uri: OAUTH_CONFIG.redirectUri,
             response_type: 'token',
             scope: OAUTH_CONFIG.scope,
-            include_granted_scopes: 'true',
-            state: 'pass-through-value' // Can be used for additional security
+            prompt: 'consent'
         });
 
         window.location.href = `${OAUTH_CONFIG.authUrl}?${params.toString()}`;
@@ -100,29 +95,21 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
 
         if (accessToken) {
-            // Calculate expiration time
             const expiresAt = new Date().getTime() + (expiresIn * 1000);
-            
-            // Store tokens
             localStorage.setItem('access_token', accessToken);
             localStorage.setItem('expires_at', expiresAt);
             isAuthenticated = true;
             
-            speak("Login successful. How can I help you?");
+            speak("Login successful. You can now use voice commands.");
             showPopup("Login successful", "AUTHENTICATED");
             
-            // Redirect to either the pre-auth page or Gmail inbox
-            const preAuthPage = sessionStorage.getItem('preAuthPage');
-            if (preAuthPage) {
-                window.location.href = preAuthPage;
-            } else {
-                window.location.href = "https://mail.google.com/mail/u/0/#inbox";
-            }
+            // Clear the hash to remove token from URL
+            history.replaceState(null, null, ' ');
         }
     }
 
     // Check for OAuth response when page loads
-    if (window.location.hash.includes('access_token') || window.location.hash.includes('error')) {
+    if (window.location.hash.includes('access_token')) {
         handleOAuthResponse();
     }
 
@@ -136,10 +123,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         if (!accessToken) return;
 
         try {
-            // Using Gmail API directly with access token
-            const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread`, {
+            showPopup("Fetching your emails...", "PROCESSING");
+            
+            const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=3&q=is:unread`, {
                 headers: {
-                    'Authorization': `Bearer ${accessToken}`
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
                 }
             });
             
@@ -152,29 +141,38 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 return;
             }
 
-            // Get details for first 3 emails
-            for (const message of data.messages.slice(0, 3)) {
-                const msgResponse = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}`, {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`
-                    }
-                });
-                const msgData = await msgResponse.json();
-                
-                const fromHeader = msgData.payload.headers.find(h => h.name === "From");
-                const subjectHeader = msgData.payload.headers.find(h => h.name === "Subject");
-                
-                const from = fromHeader ? fromHeader.value : "Unknown sender";
-                const subject = subjectHeader ? subjectHeader.value : "No subject";
-                
-                const messageText = `Email from ${from}. Subject: ${subject}`;
-                speak(messageText);
-                showPopup(messageText, "EMAIL");
-            }
+            // Process the first email
+            const email = data.messages[0];
+            const emailResponse = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${email.id}`, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+            
+            const emailData = await emailResponse.json();
+            const headers = emailData.payload.headers;
+            
+            const fromHeader = headers.find(h => h.name.toLowerCase() === "from");
+            const subjectHeader = headers.find(h => h.name.toLowerCase() === "subject");
+            
+            const from = fromHeader ? fromHeader.value.split('<')[0].trim() : "Unknown sender";
+            const subject = subjectHeader ? subjectHeader.value : "No subject";
+            
+            const message = `You have new email from ${from}. Subject: ${subject}`;
+            speak(message);
+            showPopup(message, "EMAIL");
+            
         } catch (error) {
             console.error("Error fetching emails:", error);
-            speak("Sorry, I couldn't fetch your emails.");
-            showPopup("Error fetching emails", "ERROR");
+            if (error.message.includes("Invalid Credentials") || error.message.includes("token expired")) {
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('expires_at');
+                speak("Your session expired. Please log in again.");
+                showPopup("Session expired. Please login again.", "ERROR");
+            } else {
+                speak("Sorry, I couldn't fetch your emails.");
+                showPopup("Error fetching emails", "ERROR");
+            }
         }
     }
 
@@ -222,6 +220,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             if (matchedCommand === "login") {
                 showPopup("Redirecting to login...", "PROCESSING");
                 speak("Redirecting to login page");
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('expires_at');
                 initiateOAuthLogin();
                 return;
             }
@@ -231,18 +231,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     speak("Please log in first by saying 'login'");
                     return;
                 }
-                showPopup("Fetching your latest emails...", "PROCESSING");
-                speak("Fetching your latest emails...");
                 fetchEmails();
                 return;
             }
 
             showPopup(`Opening ${matchedCommand}...`, "PROCESSING");
             speak(`Opening ${matchedCommand}`);
-
-            setTimeout(() => {
-                window.open(urls[matchedCommand], "_self");
-            }, 1500);
+            window.open(urls[matchedCommand], "_self");
             return;
         }
 
