@@ -8,8 +8,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
-    let isActive = true; // Changed to true to start active
-    let wakeWordDetected = true; // Changed to true to start listening
+    let isActive = true;
+    let wakeWordDetected = true;
     let isListening = false;
     let lastCommandTime = 0;
     let isAuthenticated = false;
@@ -133,13 +133,18 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function initiateOAuthLogin() {
+        const state = encodeURIComponent(JSON.stringify({
+            redirectTo: window.location.href
+        }));
+        
         const params = new URLSearchParams({
             client_id: OAUTH_CONFIG.clientId,
             redirect_uri: OAUTH_CONFIG.redirectUri,
             response_type: 'code',
             scope: OAUTH_CONFIG.scope,
             access_type: 'offline',
-            prompt: 'consent'
+            prompt: 'consent',
+            state: state
         });
 
         window.location.href = `${OAUTH_CONFIG.authUrl}?${params.toString()}`;
@@ -251,11 +256,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         speak(randomResponse);
     }
 
-    // Handle OAuth callback when returning from Google auth
     function handleOAuthCallback() {
         const params = new URLSearchParams(window.location.search);
         const code = params.get('code');
         const error = params.get('error');
+        const state = params.get('state');
 
         if (error) {
             console.error('OAuth error:', error);
@@ -267,13 +272,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             showPopup("Completing authentication...", "PROCESSING");
             speak("Completing your login...");
 
-            // Exchange code for tokens using your server
             fetch('http://localhost:8080/auth/callback', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ code })
+                body: JSON.stringify({ code, state })
             })
             .then(response => response.json())
             .then(data => {
@@ -283,6 +287,18 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     isAuthenticated = true;
                     speak("Login successful. How can I help you?");
                     showPopup("Login successful", "AUTHENTICATED");
+                    
+                    // Handle redirection
+                    try {
+                        const stateObj = state ? JSON.parse(decodeURIComponent(state)) : {};
+                        if (stateObj.redirectTo) {
+                            window.location.href = stateObj.redirectTo;
+                        } else {
+                            window.location.href = "https://mail.google.com/mail/u/0/#inbox";
+                        }
+                    } catch (e) {
+                        window.location.href = "https://mail.google.com/mail/u/0/#inbox";
+                    }
                 } else {
                     throw new Error('No tokens received');
                 }

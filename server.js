@@ -25,39 +25,61 @@ function loadCredentials() {
 // Initialize OAuth2 client
 function getOAuth2Client() {
     const { client_secret, client_id, redirect_uris } = loadCredentials();
-    return new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+    return new google.auth.OAuth2(
+        client_id,
+        client_secret,
+        redirect_uris[0]
+    );
 }
+
+// Generate auth URL endpoint
+app.get('/auth/url', (req, res) => {
+    const oAuth2Client = getOAuth2Client();
+    const authUrl = oAuth2Client.generateAuthUrl({
+        access_type: 'offline',
+        scope: SCOPES,
+        prompt: 'consent'
+    });
+    res.json({ authUrl });
+});
 
 // Token exchange endpoint
 app.post('/auth/callback', async (req, res) => {
     try {
-        const { code, refresh_token } = req.body;
+        const { code } = req.body;
         const oAuth2Client = getOAuth2Client();
+        const { tokens } = await oAuth2Client.getToken(code);
         
-        let tokens;
-        if (code) {
-            // New authorization code flow
-            const { tokens: newTokens } = await oAuth2Client.getToken(code);
-            tokens = newTokens;
-        } else if (refresh_token) {
-            // Refresh token flow
-            const { tokens: newTokens } = await oAuth2Client.refreshToken(refresh_token);
-            tokens = newTokens;
-        } else {
-            return res.status(400).json({ error: 'Missing token parameters' });
-        }
-
-        oAuth2Client.setCredentials(tokens);
+        // Save token for server use
         fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
         
         res.json({
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,
-            expires_in: tokens.expiry_date
+            redirect_url: "https://mail.google.com/mail/u/0/#inbox?login_success=true"
         });
     } catch (error) {
         console.error('Token exchange error:', error);
         res.status(500).json({ error: 'Failed to exchange token' });
+    }
+});
+
+// Token verification endpoint
+app.post('/api/verify-token', async (req, res) => {
+    try {
+        const { token } = req.body;
+        const oAuth2Client = getOAuth2Client();
+        oAuth2Client.setCredentials({ access_token: token });
+        
+        const oauth2 = google.oauth2({
+            auth: oAuth2Client,
+            version: 'v2'
+        });
+        
+        await oauth2.userinfo.get();
+        res.json({ valid: true });
+    } catch (error) {
+        res.json({ valid: false });
     }
 });
 
