@@ -26,7 +26,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     // OAuth Configuration
     const OAUTH_CONFIG = {
         clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-        redirectUri: 'https://mail.google.com',
+        redirectUri: window.location.origin + window.location.pathname,
         scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
         authUrl: 'https://accounts.google.com/o/oauth2/v2/auth'
     };
@@ -248,36 +248,23 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         const now = new Date().getTime();
         isAuthenticated = !!accessToken && !!refreshToken && now < (parseInt(expiresAt) - 300000);
         
-        console.log("Auth check:", { 
-            hasToken: !!accessToken,
-            hasRefresh: !!refreshToken,
-            expiresAt: expiresAt,
-            currentTime: now,
-            isAuthenticated: isAuthenticated
-        });
-        
         return isAuthenticated;
     }
 
     async function ensureValidToken() {
         if (checkAuthStatus()) {
-            console.log("Using existing valid token");
             return localStorage.getItem('access_token');
         }
-        
-        console.log("Token needs refresh or is invalid");
         
         try {
             const refreshed = await refreshToken();
             if (refreshed) {
-                console.log("Token refreshed successfully");
                 return localStorage.getItem('access_token');
             }
         } catch (refreshError) {
             console.error("Token refresh failed:", refreshError);
         }
         
-        console.log("Initiating OAuth login");
         initiateOAuthLogin();
         throw new Error("Authentication required. Please log in.");
     }
@@ -285,12 +272,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     async function refreshToken() {
         const refreshToken = localStorage.getItem('refresh_token');
         if (!refreshToken) {
-            console.log("No refresh token available");
             return false;
         }
         
         try {
-            console.log("Attempting token refresh");
             const response = await fetchWithTimeout(
                 'https://oauth2.googleapis.com/token',
                 {
@@ -312,7 +297,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             }
             
             const data = await response.json();
-            console.log("Token refresh response:", data);
             
             if (data.error) {
                 throw new Error(data.error);
@@ -334,8 +318,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function initiateOAuthLogin() {
-        console.log("Starting OAuth login flow");
-        const state = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
+        const state = crypto.randomUUID();
         sessionStorage.setItem('oauth_state', state);
         sessionStorage.setItem('postAuthRedirect', window.location.href);
         
@@ -353,7 +336,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     async function handleOAuthResponse() {
-        console.log("Handling OAuth response");
         const params = new URLSearchParams(window.location.search);
         const code = params.get('code');
         const state = params.get('state');
@@ -375,7 +357,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         if (code) {
             try {
-                console.log("Exchanging code for token");
                 const response = await fetchWithTimeout(
                     'https://oauth2.googleapis.com/token',
                     {
@@ -398,7 +379,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 }
                 
                 const data = await response.json();
-                console.log("Token exchange response:", data);
                 
                 if (data.error) {
                     throw new Error(data.error);
@@ -412,8 +392,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 localStorage.setItem('expires_at', expiresAt);
                 isAuthenticated = true;
                 
-                const redirectUrl = sessionStorage.getItem('postAuthRedirect') || 'https://mail.google.com';
-                console.log("Redirecting to:", redirectUrl);
+                const redirectUrl = sessionStorage.getItem('postAuthRedirect') || window.location.origin;
                 window.location.href = redirectUrl;
             } catch (error) {
                 console.error('Token exchange failed:', error);
@@ -422,14 +401,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
-    if (window.location.hash.includes('access_token') || window.location.search.includes('code=')) {
+    if (window.location.search.includes('code=')) {
         handleOAuthResponse();
     }
 
     // Email Operations
     async function fetchEmails() {
         try {
-            console.log("Fetching emails...");
             const accessToken = await ensureValidToken();
             showPopup("Fetching your emails...", "PROCESSING");
             
