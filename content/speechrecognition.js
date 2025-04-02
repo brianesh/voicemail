@@ -17,7 +17,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     // OAuth Configuration - MUST match your Google Cloud Console settings
     const OAUTH_CONFIG = {
         clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-        redirectUri: window.location.origin, // Must match your registered URI
+        redirectUri: 'https://mail.google.com', // Must match exactly what's in Google Cloud Console
         scope: 'https://www.googleapis.com/auth/gmail.readonly',
         authUrl: 'https://accounts.google.com/o/oauth2/v2/auth'
     };
