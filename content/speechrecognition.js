@@ -108,9 +108,20 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function speak(text) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        speechSynthesis.cancel();
-        speechSynthesis.speak(utterance);
+        try {
+            if (!('speechSynthesis' in window)) {
+                console.error("Speech synthesis not supported");
+                return;
+            }
+            const utterance = new SpeechSynthesisUtterance(text);
+            speechSynthesis.cancel();
+            utterance.onerror = (event) => {
+                console.error("Speech synthesis error:", event.error);
+            };
+            speechSynthesis.speak(utterance);
+        } catch (error) {
+            console.error("Error in speak function:", error);
+        }
     }
 
     function checkAuthStatus() {
@@ -188,6 +199,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             speak("Login failed. Security error.");
             return;
         }
+        sessionStorage.removeItem('oauth_state');
 
         if (code) {
             try {
@@ -280,7 +292,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const message = `You have new email from ${from}. Subject: ${subject}`;
             speak(message);
             showPopup(message, "EMAIL");
-            addToHistory("Read emails", `Found email from ${about}`);
+            addToHistory("Read emails", `Found email from ${from} about ${subject}`);
             
         } catch (error) {
             console.error("Error fetching emails:", error);
@@ -296,7 +308,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
-    // New email management functions
     async function sendEmail(to, subject, body) {
         if (!checkAuthStatus()) {
             speak("Please log in first by saying 'login'");
@@ -480,7 +491,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
-    // Enhanced command parsing
     function parseCommand(transcript) {
         const lowerTranscript = transcript.toLowerCase().trim();
         
