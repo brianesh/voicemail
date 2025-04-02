@@ -13,8 +13,16 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let isListening = false;
     let lastCommandTime = 0;
     let isAuthenticated = false;
-    const password = "fish";
-    let awaitingPassword = false;
+    let awaitingAuthResponse = false;
+
+    // OAuth Configuration - Using your actual credentials
+    const OAUTH_CONFIG = {
+        clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
+        redirectUri: 'http://localhost:8080/callback',
+        scope: 'https://www.googleapis.com/auth/gmail.readonly',
+        authUrl: 'https://accounts.google.com/o/oauth2/auth',
+        tokenUrl: 'https://oauth2.googleapis.com/token'
+    };
 
     // Floating Popup UI
     const popup = document.createElement("div");
@@ -56,6 +64,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         speechSynthesis.speak(utterance);
     }
 
+    function checkAuthStatus() {
+        const accessToken = localStorage.getItem("access_token");
+        isAuthenticated = !!accessToken;
+        return isAuthenticated;
+    }
+
     async function getAccessToken() {
         let accessToken = localStorage.getItem("access_token");
         let refreshToken = localStorage.getItem("refresh_token");
@@ -90,12 +104,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
 
         try {
-            const response = await fetch("https://oauth2.googleapis.com/token", {
+            const response = await fetch(OAUTH_CONFIG.tokenUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/x-www-form-urlencoded" },
                 body: new URLSearchParams({
-                    client_id: "YOUR_CLIENT_ID",
-                    client_secret: "YOUR_CLIENT_SECRET",
+                    client_id: OAUTH_CONFIG.clientId,
+                    client_secret: "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",
                     refresh_token: refreshToken,
                     grant_type: "refresh_token"
                 }),
@@ -118,9 +132,22 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
+    function initiateOAuthLogin() {
+        const params = new URLSearchParams({
+            client_id: OAUTH_CONFIG.clientId,
+            redirect_uri: OAUTH_CONFIG.redirectUri,
+            response_type: 'code',
+            scope: OAUTH_CONFIG.scope,
+            access_type: 'offline',
+            prompt: 'consent'
+        });
+
+        window.location.href = `${OAUTH_CONFIG.authUrl}?${params.toString()}`;
+    }
+
     async function fetchEmails() {
-        if (!isAuthenticated) {
-            speak("Please authenticate first by saying 'password'");
+        if (!checkAuthStatus()) {
+            speak("Please log in first by saying 'login'");
             return;
         }
 
@@ -128,36 +155,19 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         if (!accessToken) return;
 
         try {
-            const response = await fetch("https://www.googleapis.com/gmail/v1/users/me/messages?q=is:unread", {
-                method: "GET",
-                headers: {
-                    "Authorization": `Bearer ${accessToken}`,
-                    "Accept": "application/json",
-                }
-            });
+            // Changed to use your server endpoint instead of direct Gmail API
+            const response = await fetch(`http://localhost:8080/api/emails?action=unread&token=${encodeURIComponent(accessToken)}`);
+            const { emails, error } = await response.json();
 
-            const data = await response.json();
-            if (!data.messages) {
+            if (error) throw new Error(error);
+            if (!emails || emails.length === 0) {
                 speak("You have no new emails.");
                 showPopup("No new emails", "INFO");
                 return;
             }
 
-            for (const email of data.messages.slice(0, 3)) {
-                const emailResponse = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${email.id}`, {
-                    method: "GET",
-                    headers: {
-                        "Authorization": `Bearer ${accessToken}`,
-                        "Accept": "application/json",
-                    }
-                });
-
-                const emailData = await emailResponse.json();
-                const headers = emailData.payload.headers;
-                const subject = headers.find(header => header.name === "Subject")?.value || "No Subject";
-                const from = headers.find(header => header.name === "From")?.value || "Unknown Sender";
-
-                let message = `Email from ${from}. Subject: ${subject}`;
+            for (const email of emails.slice(0, 3)) {
+                let message = `Email from ${email.from}. Subject: ${email.subject}`;
                 speak(message);
                 showPopup(message, "EMAIL");
             }
@@ -182,7 +192,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             "trash": ["trash", "deleted emails"],
             "all mail": ["all mail", "all messages"],
             "important": ["important", "priority emails"],
-            "readEmails": ["read my emails", "read my email", "read latest emails", "check my emails", "show unread emails"]
+            "readEmails": ["read my emails", "read my email", "read latest emails", "check my emails", "show unread emails"],
+            "login": ["login", "sign in", "authenticate"]
         };
 
         const urls = {
@@ -207,12 +218,17 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             if (now - lastCommandTime < 3000) return;
 
             lastCommandTime = now;
-            showPopup(`Opening ${matchedCommand}...`, "Processing");
-            speak(`Opening ${matchedCommand}`);
+
+            if (matchedCommand === "login") {
+                showPopup("Redirecting to login...", "PROCESSING");
+                speak("Redirecting to login page");
+                initiateOAuthLogin();
+                return;
+            }
 
             if (matchedCommand === "readEmails") {
-                if (!isAuthenticated) {
-                    speak("Please authenticate first by saying 'password'");
+                if (!checkAuthStatus()) {
+                    speak("Please log in first by saying 'login'");
                     return;
                 }
                 showPopup("Fetching your latest emails...", "PROCESSING");
@@ -220,6 +236,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 fetchEmails();
                 return;
             }
+
+            showPopup(`Opening ${matchedCommand}...`, "PROCESSING");
+            speak(`Opening ${matchedCommand}`);
 
             setTimeout(() => {
                 window.open(urls[matchedCommand], "_self");
@@ -229,24 +248,57 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         let responses = ["I didn't catch that. Try again?", "Can you repeat?", "I'm not sure what you meant."];
         let randomResponse = responses[Math.floor(Math.random() * responses.length)];
-        showPopup(randomResponse, "Error");
+        showPopup(randomResponse, "ERROR");
         speak(randomResponse);
     }
 
-    function handleAuthentication(transcript) {
-        let spokenPassword = transcript.trim().toLowerCase();
-        
-        if (spokenPassword === password.toLowerCase()) {
-            isAuthenticated = true;
-            awaitingPassword = false;
-            speak("Authentication successful. How can I assist you?");
-            showPopup("Authenticated successfully", "AUTHENTICATED");
-            isActive = true;
-        } else {
-            speak("Incorrect password. Please try again by saying 'password'");
-            showPopup("Incorrect password", "AUTHENTICATION ERROR");
-            awaitingPassword = false;
+    // Handle OAuth callback when returning from Google auth
+    function handleOAuthCallback() {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        const error = params.get('error');
+
+        if (error) {
+            console.error('OAuth error:', error);
+            speak("Login failed. Please try again.");
+            return;
         }
+
+        if (code) {
+            showPopup("Completing authentication...", "PROCESSING");
+            speak("Completing your login...");
+
+            // Exchange code for tokens using your server
+            fetch('http://localhost:8080/auth/callback', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ code })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.access_token) {
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('refresh_token', data.refresh_token);
+                    isAuthenticated = true;
+                    speak("Login successful. How can I help you?");
+                    showPopup("Login successful", "AUTHENTICATED");
+                } else {
+                    throw new Error('No tokens received');
+                }
+            })
+            .catch(error => {
+                console.error('Login failed:', error);
+                speak("Login failed. Please try again.");
+                showPopup("Login failed", "ERROR");
+            });
+        }
+    }
+
+    // Check for OAuth callback when page loads
+    if (window.location.pathname === '/callback') {
+        handleOAuthCallback();
     }
 
     // Start listening immediately when the page loads
@@ -269,19 +321,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
         let sleepCommands = ["sleep email", "stop email", "turn off email"];
-        let authCommand = "password";
-
-        if (awaitingPassword) {
-            handleAuthentication(transcript);
-            return;
-        }
-
-        if (transcript.includes(authCommand)) {
-            speak("Please say your password now.");
-            showPopup("Listening for password...", "AUTHENTICATION");
-            awaitingPassword = true;
-            return;
-        }
 
         if (wakeWords.some(word => transcript.includes(word))) {
             isActive = true;
@@ -310,4 +349,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             setTimeout(() => recognition.start(), 1000);
         }
     };
+
+    // Check auth status on page load
+    checkAuthStatus();
 }
