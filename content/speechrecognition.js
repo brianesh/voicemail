@@ -15,13 +15,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let isAuthenticated = false;
     let awaitingAuthResponse = false;
 
-    // OAuth Configuration
+    // OAuth Configuration - Using implicit flow for client-side only
     const OAUTH_CONFIG = {
         clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-        redirectUri: 'http://localhost:8080/callback',
+        redirectUri: window.location.origin, // Redirect back to current page
         scope: 'https://www.googleapis.com/auth/gmail.readonly',
-        authUrl: 'https://accounts.google.com/o/oauth2/auth',
-        tokenUrl: 'https://oauth2.googleapis.com/token'
+        authUrl: 'https://accounts.google.com/o/oauth2/auth'
     };
 
     // Floating Popup UI
@@ -66,88 +65,65 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     function checkAuthStatus() {
         const accessToken = localStorage.getItem("access_token");
-        isAuthenticated = !!accessToken;
+        const expiresAt = localStorage.getItem("expires_at");
+        isAuthenticated = !!accessToken && new Date().getTime() < expiresAt;
         return isAuthenticated;
     }
 
-    async function getAccessToken() {
-        let accessToken = localStorage.getItem("access_token");
-        let refreshToken = localStorage.getItem("refresh_token");
-
-        if (!accessToken) {
-            console.error("Access token is missing.");
-            speak("Please log in to access emails.");
-            return null;
-        }
-
-        try {
-            const response = await fetch("https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=" + accessToken);
-            const data = await response.json();
-
-            if (data.error) {
-                console.warn("Access token expired. Attempting to refresh...");
-                return await refreshAccessToken(refreshToken);
-            }
-
-            return accessToken;
-        } catch (error) {
-            console.error("Error verifying token:", error);
-            return null;
-        }
-    }
-
-    async function refreshAccessToken(refreshToken) {
-        if (!refreshToken) {
-            console.error("No refresh token available. Please log in again.");
-            speak("Your session expired. Please log in again.");
-            return null;
-        }
-
-        try {
-            const response = await fetch(OAUTH_CONFIG.tokenUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: new URLSearchParams({
-                    client_id: OAUTH_CONFIG.clientId,
-                    client_secret: "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",
-                    refresh_token: refreshToken,
-                    grant_type: "refresh_token"
-                }),
-            });
-
-            const data = await response.json();
-
-            if (data.access_token) {
-                localStorage.setItem("access_token", data.access_token);
-                console.log("Access token refreshed successfully.");
-                return data.access_token;
-            } else {
-                console.error("Failed to refresh token:", data);
-                speak("Unable to refresh access. Please log in again.");
-                return null;
-            }
-        } catch (error) {
-            console.error("Error refreshing token:", error);
-            return null;
-        }
-    }
-
     function initiateOAuthLogin() {
-        const state = encodeURIComponent(JSON.stringify({
-            redirectTo: window.location.href
-        }));
+        // Store current page before redirecting
+        sessionStorage.setItem('preAuthPage', window.location.href);
         
         const params = new URLSearchParams({
             client_id: OAUTH_CONFIG.clientId,
             redirect_uri: OAUTH_CONFIG.redirectUri,
-            response_type: 'code',
+            response_type: 'token',
             scope: OAUTH_CONFIG.scope,
-            access_type: 'offline',
-            prompt: 'consent',
-            state: state
+            include_granted_scopes: 'true',
+            state: 'pass-through-value' // Can be used for additional security
         });
 
         window.location.href = `${OAUTH_CONFIG.authUrl}?${params.toString()}`;
+    }
+
+    function handleOAuthResponse() {
+        const hash = window.location.hash.substring(1);
+        const params = new URLSearchParams(hash);
+        const accessToken = params.get('access_token');
+        const expiresIn = params.get('expires_in');
+        const error = params.get('error');
+
+        if (error) {
+            console.error('OAuth error:', error);
+            speak("Login failed. Please try again.");
+            return;
+        }
+
+        if (accessToken) {
+            // Calculate expiration time
+            const expiresAt = new Date().getTime() + (expiresIn * 1000);
+            
+            // Store tokens
+            localStorage.setItem('access_token', accessToken);
+            localStorage.setItem('expires_at', expiresAt);
+            isAuthenticated = true;
+            
+            speak("Login successful. How can I help you?");
+            showPopup("Login successful", "AUTHENTICATED");
+            
+            // Redirect to either the pre-auth page or Gmail inbox
+            const preAuthPage = sessionStorage.getItem('preAuthPage');
+            if (preAuthPage) {
+                window.location.href = preAuthPage;
+            } else {
+                window.location.href = "https://mail.google.com/mail/u/0/#inbox";
+            }
+        }
+    }
+
+    // Check for OAuth response when page loads
+    if (window.location.hash.includes('access_token') || window.location.hash.includes('error')) {
+        handleOAuthResponse();
     }
 
     async function fetchEmails() {
@@ -156,24 +132,44 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return;
         }
 
-        let accessToken = await getAccessToken();
+        const accessToken = localStorage.getItem("access_token");
         if (!accessToken) return;
 
         try {
-            const response = await fetch(`http://localhost:8080/api/emails?action=unread&token=${encodeURIComponent(accessToken)}`);
-            const { emails, error } = await response.json();
-
-            if (error) throw new Error(error);
-            if (!emails || emails.length === 0) {
+            // Using Gmail API directly with access token
+            const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread`, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.error) throw new Error(data.error.message);
+            if (!data.messages || data.messages.length === 0) {
                 speak("You have no new emails.");
                 showPopup("No new emails", "INFO");
                 return;
             }
 
-            for (const email of emails.slice(0, 3)) {
-                let message = `Email from ${email.from}. Subject: ${email.subject}`;
-                speak(message);
-                showPopup(message, "EMAIL");
+            // Get details for first 3 emails
+            for (const message of data.messages.slice(0, 3)) {
+                const msgResponse = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                const msgData = await msgResponse.json();
+                
+                const fromHeader = msgData.payload.headers.find(h => h.name === "From");
+                const subjectHeader = msgData.payload.headers.find(h => h.name === "Subject");
+                
+                const from = fromHeader ? fromHeader.value : "Unknown sender";
+                const subject = subjectHeader ? subjectHeader.value : "No subject";
+                
+                const messageText = `Email from ${from}. Subject: ${subject}`;
+                speak(messageText);
+                showPopup(messageText, "EMAIL");
             }
         } catch (error) {
             console.error("Error fetching emails:", error);
@@ -254,66 +250,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         let randomResponse = responses[Math.floor(Math.random() * responses.length)];
         showPopup(randomResponse, "ERROR");
         speak(randomResponse);
-    }
-
-    function handleOAuthCallback() {
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get('code');
-        const error = params.get('error');
-        const state = params.get('state');
-
-        if (error) {
-            console.error('OAuth error:', error);
-            speak("Login failed. Please try again.");
-            return;
-        }
-
-        if (code) {
-            showPopup("Completing authentication...", "PROCESSING");
-            speak("Completing your login...");
-
-            fetch('http://localhost:8080/auth/callback', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ code, state })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.access_token) {
-                    localStorage.setItem('access_token', data.access_token);
-                    localStorage.setItem('refresh_token', data.refresh_token);
-                    isAuthenticated = true;
-                    speak("Login successful. How can I help you?");
-                    showPopup("Login successful", "AUTHENTICATED");
-                    
-                    // Handle redirection
-                    try {
-                        const stateObj = state ? JSON.parse(decodeURIComponent(state)) : {};
-                        if (stateObj.redirectTo) {
-                            window.location.href = stateObj.redirectTo;
-                        } else {
-                            window.location.href = "https://mail.google.com/mail/u/0/#inbox";
-                        }
-                    } catch (e) {
-                        window.location.href = "https://mail.google.com/mail/u/0/#inbox";
-                    }
-                } else {
-                    throw new Error('No tokens received');
-                }
-            })
-            .catch(error => {
-                console.error('Login failed:', error);
-                speak("Login failed. Please try again.");
-                showPopup("Login failed", "ERROR");
-            });
-        }
-    }
-
-    // Check for OAuth callback when page loads
-    if (window.location.pathname === '/callback') {
-        handleOAuthCallback();
     }
 
     // Start listening immediately when the page loads
