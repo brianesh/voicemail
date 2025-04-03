@@ -1,3 +1,4 @@
+// Voice Email Assistant - JavaScript Version
 if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
     console.error("Speech Recognition not supported in this browser.");
 } else if (!('speechSynthesis' in window)) {
