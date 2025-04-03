@@ -3,7 +3,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 } else {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
-    setTimeout(() => recognition.start(), 0);
 
     recognition.continuous = true;
     recognition.interimResults = false;
@@ -20,23 +19,16 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let apiCallTimestamps = [];
     let isOnline = navigator.onLine;
     let retryAttempts = 0;
-    const MAX_RETRIES = 3;
-    const API_RATE_LIMIT = 10;
-    const API_TIMEOUT = 15000;
+    const MAX_RETRIES = 2;
+    const API_RATE_LIMIT = 5; // Max API calls per minute
+    const API_TIMEOUT = 10000; // 10 seconds timeout
 
-    // Enhanced OAuth Configuration
+    // OAuth Configuration
     const OAUTH_CONFIG = {
         clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-        redirectUri: chrome.identity.getRedirectURL() || window.location.origin + window.location.pathname,
-        scope: [
-            'https://www.googleapis.com/auth/gmail.readonly',
-            'https://www.googleapis.com/auth/gmail.modify',
-            'https://www.googleapis.com/auth/gmail.send',
-            'https://www.googleapis.com/auth/gmail.compose',
-            'https://www.googleapis.com/auth/gmail.labels'
-        ].join(' '),
-        authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
-        tokenUrl: 'https://oauth2.googleapis.com/token'
+        redirectUri: window.location.origin + window.location.pathname,
+        scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
+        authUrl: 'https://accounts.google.com/o/oauth2/v2/auth'
     };
 
     // UI Elements
@@ -46,7 +38,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         position: fixed;
         bottom: 20px;
         right: 20px;
-        width: 300px;
+        width: 250px;
         padding: 15px;
         background: rgba(0, 0, 0, 0.9);
         color: white;
@@ -80,7 +72,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         position: fixed;
         bottom: 100px;
         right: 20px;
-        width: 300px;
+        width: 250px;
         max-height: 200px;
         overflow-y: auto;
         padding: 10px;
@@ -120,34 +112,49 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         return true;
     }
 
-    // Enhanced fetch with timeout and retry
+    // Enhanced fetch with timeout
     async function fetchWithTimeout(resource, options = {}) {
-        const { timeout = API_TIMEOUT, retries = 0 } = options;
+        const { timeout = API_TIMEOUT } = options;
         
-        try {
-            const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), timeout);
-            
-            const response = await fetch(resource, {
-                ...options,
-                signal: controller.signal  
-            });
-            
-            clearTimeout(id);
-            
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-            }
-            
-            return response;
-        } catch (error) {
-            if (retries < MAX_RETRIES && error.name !== 'AbortError') {
-                const delay = Math.pow(2, retries) * 1000;
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeout);
+        
+        const response = await fetch(resource, {
+            ...options,
+            signal: controller.signal  
+        });
+        
+        clearTimeout(id);
+        return response;
+    }
+
+    // Retry wrapper for API calls
+    async function withRetry(fn, args, operationName) {
+        retryAttempts = 0;
+        
+        while (retryAttempts <= MAX_RETRIES) {
+            try {
+                if (!isOnline) {
+                    throw new Error("No internet connection available");
+                }
+                
+                checkRateLimit();
+                return await fn(...args);
+            } catch (error) {
+                retryAttempts++;
+                
+                if (retryAttempts > MAX_RETRIES) {
+                    console.error(`Failed after ${MAX_RETRIES} attempts for ${operationName}:`, error);
+                    throw error;
+                }
+                
+                const delay = Math.pow(2, retryAttempts) * 1000;
                 await new Promise(resolve => setTimeout(resolve, delay));
-                return fetchWithTimeout(resource, { ...options, retries: retries + 1 });
+                
+                if (error.message.includes("Authentication")) {
+                    await ensureValidToken();
+                }
             }
-            throw error;
         }
     }
 
@@ -163,7 +170,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             setTimeout(() => {
                 popup.style.display = "none";
             }, 500);
-        }, 3000);
+        }, 2500);
     }
 
     function addToHistory(command, response) {
@@ -234,26 +241,14 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     // Improved Authentication Functions
     function checkAuthStatus() {
-        try {
-            const accessToken = localStorage.getItem("access_token");
-            const expiresAt = localStorage.getItem("expires_at");
-            const refreshToken = localStorage.getItem("refresh_token");
-            
-            if (!accessToken || !refreshToken) {
-                isAuthenticated = false;
-                return false;
-            }
-            
-            const now = new Date().getTime();
-            const bufferTime = 300000; // 5 minutes buffer
-            isAuthenticated = now < (parseInt(expiresAt) - bufferTime);
-            
-            return isAuthenticated;
-        } catch (error) {
-            console.error("Error checking auth status:", error);
-            isAuthenticated = false;
-            return false;
-        }
+        const accessToken = localStorage.getItem("access_token");
+        const expiresAt = localStorage.getItem("expires_at");
+        const refreshToken = localStorage.getItem("refresh_token");
+        
+        const now = new Date().getTime();
+        isAuthenticated = !!accessToken && !!refreshToken && now < (parseInt(expiresAt) - 300000);
+        
+        return isAuthenticated;
     }
 
     async function ensureValidToken() {
@@ -277,13 +272,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     async function refreshToken() {
         const refreshToken = localStorage.getItem('refresh_token');
         if (!refreshToken) {
-            console.log("No refresh token available");
             return false;
         }
         
         try {
             const response = await fetchWithTimeout(
-                OAUTH_CONFIG.tokenUrl,
+                'https://oauth2.googleapis.com/token',
                 {
                     method: 'POST',
                     headers: {
@@ -299,34 +293,25 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             );
             
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                console.error('Refresh token failed:', errorData);
-                throw new Error(errorData.error || 'Refresh failed');
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
             
             const data = await response.json();
             
-            if (!data.access_token) {
-                throw new Error('No access token in response');
+            if (data.error) {
+                throw new Error(data.error);
             }
             
             const expiresAt = new Date().getTime() + (data.expires_in * 1000);
             localStorage.setItem('access_token', data.access_token);
-            localStorage.setItem('expires_at', expiresAt.toString());
-            
-            // Store new refresh token if provided (Google doesn't always return one)
-            if (data.refresh_token) {
-                localStorage.setItem('refresh_token', data.refresh_token);
-            }
-            
+            localStorage.setItem('expires_at', expiresAt);
             isAuthenticated = true;
+            
             return true;
         } catch (error) {
             console.error('Token refresh failed:', error);
-            // Clear invalid tokens
             localStorage.removeItem('access_token');
             localStorage.removeItem('expires_at');
-            localStorage.removeItem('refresh_token');
             isAuthenticated = false;
             return false;
         }
@@ -344,8 +329,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             scope: OAUTH_CONFIG.scope,
             state: state,
             access_type: 'offline',
-            prompt: 'consent',
-            include_granted_scopes: 'true'
+            prompt: 'consent'
         });
 
         window.location.href = `${OAUTH_CONFIG.authUrl}?${params.toString()}`;
@@ -374,7 +358,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         if (code) {
             try {
                 const response = await fetchWithTimeout(
-                    OAUTH_CONFIG.tokenUrl,
+                    'https://oauth2.googleapis.com/token',
                     {
                         method: 'POST',
                         headers: {
@@ -402,7 +386,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 
                 const expiresAt = new Date().getTime() + (data.expires_in * 1000);
                 localStorage.setItem('access_token', data.access_token);
-                localStorage.setItem('refresh_token', data.refresh_token);
+                if (data.refresh_token) {
+                    localStorage.setItem('refresh_token', data.refresh_token);
+                }
                 localStorage.setItem('expires_at', expiresAt);
                 isAuthenticated = true;
                 
@@ -425,15 +411,19 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const accessToken = await ensureValidToken();
             showPopup("Fetching your emails...", "PROCESSING");
             
-            const response = await fetchWithTimeout(
-                `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5&q=is:unread`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: API_TIMEOUT
-                }
+            const response = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=3&q=is:unread`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "fetchEmails"
             );
             
             const data = await response.json();
@@ -446,12 +436,16 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             }
 
             const email = data.messages[0];
-            const emailResponse = await fetchWithTimeout(
-                `https://gmail.googleapis.com/gmail/v1/users/me/messages/${email.id}`,
-                {
-                    headers: { 'Authorization': `Bearer ${accessToken}` },
-                    timeout: API_TIMEOUT
-                }
+            const emailResponse = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${email.id}`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "fetchEmailContent"
             );
             
             const emailData = await emailResponse.json();
@@ -488,12 +482,16 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     async function findMessageIdByPosition(position) {
         try {
             const accessToken = await ensureValidToken();
-            const response = await fetchWithTimeout(
-                `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10`,
-                {
-                    headers: { 'Authorization': `Bearer ${accessToken}` },
-                    timeout: API_TIMEOUT
-                }
+            const response = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "findMessageByPosition"
             );
             
             const data = await response.json();
@@ -533,12 +531,16 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             };
             const labelId = folderMap[folder.toLowerCase()] || 'INBOX';
             
-            const response = await fetchWithTimeout(
-                `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&labelIds=${labelId}`,
-                {
-                    headers: { 'Authorization': `Bearer ${accessToken}` },
-                    timeout: API_TIMEOUT
-                }
+            const response = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&labelIds=${labelId}`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "findMessageByPositionAndFolder"
             );
             
             const data = await response.json();
@@ -569,12 +571,16 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     async function findMessageIdBySender(email) {
         try {
             const accessToken = await ensureValidToken();
-            const response = await fetchWithTimeout(
-                `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1&q=from:${encodeURIComponent(email)}`,
-                {
-                    headers: { 'Authorization': `Bearer ${accessToken}` },
-                    timeout: API_TIMEOUT
-                }
+            const response = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1&q=from:${encodeURIComponent(email)}`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "findMessageBySender"
             );
             
             const data = await response.json();
@@ -617,19 +623,23 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             
             const base64Email = btoa(unescape(encodeURIComponent(rawEmail))).replace(/\+/g, '-').replace(/\//g, '_');
             
-            const response = await fetchWithTimeout(
-                `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`,
-                {
-                    method: "POST",
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        raw: base64Email
-                    }),
-                    timeout: API_TIMEOUT
-                }
+            const response = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`,
+                    {
+                        method: "POST",
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            raw: base64Email
+                        }),
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "sendEmail"
             );
             
             const data = await response.json();
@@ -658,94 +668,26 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
-    async function replyToEmail(messageId, body) {
-        try {
-            const accessToken = await ensureValidToken();
-            
-            // First get the original message to reply to
-            const originalResponse = await fetchWithTimeout(
-                `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}`,
-                {
-                    headers: { 'Authorization': `Bearer ${accessToken}` },
-                    timeout: API_TIMEOUT
-                }
-            );
-            
-            const originalData = await originalResponse.json();
-            const headers = originalData.payload.headers;
-            
-            const from = headers.find(h => h.name.toLowerCase() === "from")?.value || "";
-            const subject = headers.find(h => h.name.toLowerCase() === "subject")?.value || "";
-            const replySubject = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
-            
-            const rawEmail = [
-                `To: ${from}`,
-                `Subject: ${replySubject}`,
-                `In-Reply-To: <${originalData.id}>`,
-                `References: <${originalData.id}>`,
-                "",
-                body
-            ].join("\n");
-            
-            const base64Email = btoa(unescape(encodeURIComponent(rawEmail))).replace(/\+/g, '-').replace(/\//g, '_');
-            
-            const response = await fetchWithTimeout(
-                `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`,
-                {
-                    method: "POST",
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        raw: base64Email
-                    }),
-                    timeout: API_TIMEOUT
-                }
-            );
-            
-            const data = await response.json();
-            speak("Reply sent successfully");
-            addToHistory(`Reply to email ${messageId}`, "Reply sent successfully");
-            return data;
-        } catch (error) {
-            console.error("Error replying to email:", error);
-            
-            let errorMessage = "Failed to send reply.";
-            if (error.message.includes("Invalid Credentials") || error.message.includes("token expired")) {
-                errorMessage = "Your session expired. Please log in again.";
-                localStorage.removeItem('access_token');
-                localStorage.removeItem('expires_at');
-            } else if (error.message.includes("Too many requests")) {
-                errorMessage = error.message;
-            } else if (!isOnline) {
-                errorMessage = "No internet connection available.";
-            } else if (error.name === "AbortError") {
-                errorMessage = "Request timed out. Please try again.";
-            }
-            
-            speak(errorMessage);
-            addToHistory("Reply to email", errorMessage);
-            throw error;
-        }
-    }
-
     async function archiveEmail(messageId) {
         try {
             const accessToken = await ensureValidToken();
-            await fetchWithTimeout(
-                `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
-                {
-                    method: "POST",
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        removeLabelIds: ['INBOX']
-                    }),
-                    timeout: API_TIMEOUT
-                }
+            await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
+                    {
+                        method: "POST",
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            removeLabelIds: ['INBOX']
+                        }),
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "archiveEmail"
             );
             
             speak("Email archived");
@@ -775,20 +717,24 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const accessToken = await ensureValidToken();
             const action = read ? "read" : "unread";
             
-            await fetchWithTimeout(
-                `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
-                {
-                    method: "POST",
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        removeLabelIds: read ? ['UNREAD'] : [],
-                        addLabelIds: read ? [] : ['UNREAD']
-                    }),
-                    timeout: API_TIMEOUT
-                }
+            await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
+                    {
+                        method: "POST",
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            removeLabelIds: read ? ['UNREAD'] : [],
+                            addLabelIds: read ? [] : ['UNREAD']
+                        }),
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "markAsRead"
             );
             
             speak(`Email marked as ${action}`);
@@ -816,15 +762,19 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     async function deleteEmail(messageId) {
         try {
             const accessToken = await ensureValidToken();
-            await fetchWithTimeout(
-                `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/trash`,
-                {
-                    method: "POST",
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`
-                    },
-                    timeout: API_TIMEOUT
-                }
+            await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/trash`,
+                    {
+                        method: "POST",
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "deleteEmail"
             );
             
             speak("Email moved to trash");
@@ -852,12 +802,16 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     async function readFullEmail(messageId) {
         try {
             const accessToken = await ensureValidToken();
-            const response = await fetchWithTimeout(
-                `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
-                {
-                    headers: { 'Authorization': `Bearer ${accessToken}` },
-                    timeout: API_TIMEOUT
-                }
+            const response = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "readFullEmail"
             );
             
             const emailData = await response.json();
@@ -903,6 +857,164 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
+    async function markAllEmailsInFolder(folder, read = true) {
+        try {
+            const accessToken = await ensureValidToken();
+            const labelMap = {
+                'inbox': 'INBOX',
+                'spam': 'SPAM',
+                'trash': 'TRASH',
+                'sent': 'SENT',
+                'drafts': 'DRAFTS'
+            };
+            const labelId = labelMap[folder.toLowerCase()] || 'INBOX';
+            
+            const listResponse = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=${labelId}`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "listEmailsInFolder"
+            );
+            
+            const listData = await listResponse.json();
+            if (!listData.messages || listData.messages.length === 0) return;
+            
+            const messageIds = listData.messages.map(msg => msg.id);
+            
+            await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            ids: messageIds,
+                            removeLabelIds: read ? ['UNREAD'] : [],
+                            addLabelIds: read ? [] : ['UNREAD']
+                        }),
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "markAllEmailsInFolder"
+            );
+            
+            speak(`Marked all emails in ${folder} as ${read ? 'read' : 'unread'}`);
+            addToHistory(`Mark all emails in ${folder}`, `Status updated to ${read ? 'read' : 'unread'}`);
+        } catch (error) {
+            console.error('Error marking all emails:', error);
+            
+            let errorMessage = "Failed to mark emails.";
+            if (error.message.includes("Invalid Credentials") || error.message.includes("token expired")) {
+                errorMessage = "Your session expired. Please log in again.";
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('expires_at');
+            } else if (!isOnline) {
+                errorMessage = "No internet connection available.";
+            } else if (error.name === "AbortError") {
+                errorMessage = "Request timed out. Please try again.";
+            }
+            
+            speak(errorMessage);
+            addToHistory("Mark all emails", errorMessage);
+            throw error;
+        }
+    }
+
+    async function markEmailsByDay(folder, day, read = true) {
+        try {
+            const accessToken = await ensureValidToken();
+            const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const dayIndex = days.indexOf(day.toLowerCase());
+            
+            if (dayIndex === -1) {
+                throw new Error('Invalid day specified');
+            }
+            
+            const today = new Date();
+            const targetDate = new Date(today);
+            targetDate.setDate(today.getDate() - ((today.getDay() - dayIndex + 7) % 7));
+            const nextDay = new Date(targetDate);
+            nextDay.setDate(targetDate.getDate() + 1);
+            
+            const dateStr = formatDateForQuery(targetDate);
+            const nextDateStr = formatDateForQuery(nextDay);
+            
+            const listResponse = await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=after:${dateStr} before:${nextDateStr}`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "listEmailsByDay"
+            );
+            
+            const listData = await listResponse.json();
+            if (!listData.messages || listData.messages.length === 0) return;
+            
+            const messageIds = listData.messages.map(msg => msg.id);
+            
+            await withRetry(
+                fetchWithTimeout,
+                [
+                    `https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            ids: messageIds,
+                            removeLabelIds: read ? ['UNREAD'] : [],
+                            addLabelIds: read ? [] : ['UNREAD']
+                        }),
+                        timeout: API_TIMEOUT
+                    }
+                ],
+                "markEmailsByDay"
+            );
+            
+            speak(`Marked emails from ${day} as ${read ? 'read' : 'unread'}`);
+            addToHistory(`Mark emails from ${day}`, `Status updated to ${read ? 'read' : 'unread'}`);
+        } catch (error) {
+            console.error('Error marking emails by day:', error);
+            
+            let errorMessage = "Failed to mark emails.";
+            if (error.message.includes("Invalid Credentials") || error.message.includes("token expired")) {
+                errorMessage = "Your session expired. Please log in again.";
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('expires_at');
+            } else if (!isOnline) {
+                errorMessage = "No internet connection available.";
+            } else if (error.name === "AbortError") {
+                errorMessage = "Request timed out. Please try again.";
+            }
+            
+            speak(errorMessage);
+            addToHistory("Mark emails by day", errorMessage);
+            throw error;
+        }
+    }
+
+    function formatDateForQuery(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}/${month}/${day}`;
+    }
+
     // Command Parsing
     function parseCommand(transcript) {
         const lowerTranscript = transcript.toLowerCase().trim();
@@ -910,14 +1022,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         
         const commandPatterns = [
             {
-                regex: /^(?:reply|respond)(?:\s+to)?\s+(.+?)(?:\s+email)?(?:\s+with\s+(.+))?$/i,
+                regex: /^(?:reply|respond)(?:\s+to)?\s+(.+?)(?:\s+email)?$/i,
                 action: 'reply',
                 extract: (match) => {
                     const target = containsEmail(match[1]) || match[1];
-                    return { 
-                        target,
-                        body: match[2] || "No content provided"
-                    };
+                    return { target };
                 }
             },
             {
@@ -962,13 +1071,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 action: 'openEmailFrom',
                 extract: (match) => ({
                     email: containsEmail(match[1]) || match[1]
-                })
-            },
-            {
-                regex: /^reply\s+with\s+(.+)/i,
-                action: 'quickReply',
-                extract: (match) => ({
-                    body: match[1]
                 })
             },
             {
@@ -1029,7 +1131,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
-    async function handleReplyCommand(target, body) {
+    async function handleReplyCommand(target) {
         const extractedTarget = containsEmail(target) || target;
         const normalizedTarget = extractedTarget.replace(/\s*(at|and)\s*/gi, '@')
                                               .replace(/\s*(dot|doht|dought)\s*/gi, '.')
@@ -1038,9 +1140,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         if (normalizedTarget.includes('@')) {
             const messageId = await findMessageIdBySender(normalizedTarget);
             if (messageId) {
-                await replyToEmail(messageId, body);
-                speak(`Reply sent to email from ${normalizedTarget}`);
-                addToHistory(`Reply to email from ${normalizedTarget}`, "Reply sent");
+                window.open(`https://mail.google.com/mail/u/0/#inbox?compose=new&messageId=${messageId}`, "_self");
+                speak(`Opening reply to email from ${normalizedTarget}`);
+                addToHistory(`Reply to email from ${normalizedTarget}`, "Opened reply interface");
             } else {
                 speak(`Could not find an email from ${normalizedTarget}. Would you like to compose a new email to them?`);
                 addToHistory(`Reply to email from ${normalizedTarget}`, "No email found");
@@ -1048,9 +1150,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         } else {
             const messageId = await findMessageIdByPosition(normalizedTarget);
             if (messageId) {
-                await replyToEmail(messageId, body);
-                speak(`Reply sent to the ${normalizedTarget} email`);
-                addToHistory(`Reply to ${normalizedTarget} email`, "Reply sent");
+                window.open(`https://mail.google.com/mail/u/0/#inbox?compose=new&messageId=${messageId}`, "_self");
+                speak(`Opening reply to the ${normalizedTarget} email`);
+                addToHistory(`Reply to ${normalizedTarget} email`, "Opened reply interface");
             } else {
                 speak(`Could not find the ${normalizedTarget} email`);
                 addToHistory(`Reply to ${normalizedTarget} email`, "No email found");
@@ -1079,6 +1181,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             await markAllEmailsInFolder(folder, status === 'read');
             speak(`Marked all emails in ${folder} as ${status}`);
             addToHistory(`Mark all emails in ${folder} as ${status}`, "Status updated");
+        } else if (filter.includes('sent on')) {
+            const day = filter.replace('sent on', '').trim();
+            await markEmailsByDay(folder, day, status === 'read');
+            speak(`Marked emails ${filter} in ${folder} as ${status}`);
+            addToHistory(`Mark emails ${filter} in ${folder} as ${status}`, "Status updated");
         } else {
             const messageId = await findMessageIdByPositionAndFolder(filter, folder);
             if (messageId) {
@@ -1103,12 +1210,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
-    async function handleQuickReplyCommand(body) {
-        // This would work with a context-aware system that remembers the last email you were reading
-        speak("Quick reply functionality would require tracking the current email context.");
-        addToHistory("Quick reply", "Need context tracking implementation");
-    }
-
     async function executeEnhancedCommand(parsedCommand) {
         try {
             if (!parsedCommand) {
@@ -1124,7 +1225,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
             switch (parsedCommand.action) {
                 case 'reply':
-                    await handleReplyCommand(parsedCommand.target, parsedCommand.body);
+                    await handleReplyCommand(parsedCommand.target);
                     break;
                 case 'send':
                     await handleSendCommand(parsedCommand.to, parsedCommand.subject, parsedCommand.body);
@@ -1140,9 +1241,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     break;
                 case 'openEmailFrom':
                     await handleOpenEmailFromCommand(parsedCommand.email);
-                    break;
-                case 'quickReply':
-                    await handleQuickReplyCommand(parsedCommand.body);
                     break;
                 case 'handleEmailAddress':
                     await handleEmailAddressCommand(parsedCommand.email);
@@ -1174,74 +1272,17 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
-    // Recognition handlers
-    recognition.onstart = () => {
-        isListening = true;
-        micIndicator.style.background = "green";
-        showPopup("Microphone activated - Listening...", "ON");
-        speak("Ready for your commands");
-    };
-
-    recognition.onresult = (event) => {
-        let result = event.results[event.results.length - 1][0];
-        let transcript = result.transcript.trim();
-        let confidence = result.confidence;
-
-        if (confidence < 0.7) return;
-
-        transcript = transcript.replace(/\s(at|and)\s/gi, '@')
-                              .replace(/\s(dot|doht|dought)\s/gi, '.')
-                              .replace(/\s(gmail|male|mail)\s/gi, 'gmail')
-                              .replace(/\s(com|calm|come|con)\b/gi, 'com');
-
-        console.log("You said:", transcript);
-        showPopup(transcript, isActive ? "ON" : "OFF");
-
-        let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
-        let sleepCommands = ["sleep email", "stop email", "turn off email"];
-
-        if (wakeWords.some(word => transcript.toLowerCase().includes(word))) {
-            isActive = true;
-            wakeWordDetected = true;
-            showPopup("Voice Control Activated", "ACTIVE");
-            speak("Voice control activated. How can I assist?");
-            addToHistory("Wake word detected", "Voice control activated");
-            return;
-        }
-
-        if (sleepCommands.some(word => transcript.toLowerCase().includes(word))) {
-            isActive = false;
-            wakeWordDetected = false;
-            showPopup("Voice Control Deactivated", "SLEEP");
-            speak("Voice control deactivated. Say 'Hey email' to reactivate.");
-            addToHistory("Sleep command", "Voice control deactivated");
-            return;
-        }
-
-        if (isActive) {
-            const parsedCommand = parseCommand(transcript);
-            if (parsedCommand) {
-                executeEnhancedCommand(parsedCommand);
-            } else {
-                executeSimpleCommand(transcript);
-            }
-        }
-    };
-
-    recognition.onend = () => {
-        isListening = false;
-        micIndicator.style.background = "red";
-        if (wakeWordDetected || !isActive) {
-            setTimeout(() => recognition.start(), 1000);
-        }
-    };
-
-    // Simple command execution
-    function executeSimpleCommand(transcript) {
+    function executeCommand(transcript) {
         let now = Date.now();
         
         if (now - lastCommandTime < 3000) return;
         lastCommandTime = now;
+
+        const parsedCommand = parseCommand(transcript);
+        if (parsedCommand) {
+            executeEnhancedCommand(parsedCommand);
+            return;
+        }
 
         const simpleCommands = {
             "compose": ["compose", "new email", "write email"],
@@ -1305,6 +1346,63 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         speak(randomResponse);
         addToHistory(transcript, "Command not recognized");
     }
+
+    // Recognition handlers
+    recognition.onstart = () => {
+        isListening = true;
+        micIndicator.style.background = "green";
+        showPopup("Microphone activated - Listening...", "ON");
+        speak("Ready for your commands");
+    };
+
+    recognition.onresult = (event) => {
+        let result = event.results[event.results.length - 1][0];
+        let transcript = result.transcript.trim();
+        let confidence = result.confidence;
+
+        if (confidence < 0.7) return;
+
+        transcript = transcript.replace(/\s(at|and)\s/gi, '@')
+                              .replace(/\s(dot|doht|dought)\s/gi, '.')
+                              .replace(/\s(gmail|male|mail)\s/gi, 'gmail')
+                              .replace(/\s(com|calm|come|con)\b/gi, 'com');
+
+        console.log("You said:", transcript);
+        showPopup(transcript, isActive ? "ON" : "OFF");
+
+        let wakeWords = ["hey email", "hi email", "hey Emil", "hello email"];
+        let sleepCommands = ["sleep email", "stop email", "turn off email"];
+
+        if (wakeWords.some(word => transcript.toLowerCase().includes(word))) {
+            isActive = true;
+            wakeWordDetected = true;
+            showPopup("Voice Control Activated", "ACTIVE");
+            speak("Voice control activated. How can I assist?");
+            addToHistory("Wake word detected", "Voice control activated");
+            return;
+        }
+
+        if (sleepCommands.some(word => transcript.toLowerCase().includes(word))) {
+            isActive = false;
+            wakeWordDetected = false;
+            showPopup("Voice Control Deactivated", "SLEEP");
+            speak("Voice control deactivated. Say 'Hey email' to reactivate.");
+            addToHistory("Sleep command", "Voice control deactivated");
+            return;
+        }
+
+        if (isActive) {
+            executeCommand(transcript);
+        }
+    };
+
+    recognition.onend = () => {
+        isListening = false;
+        micIndicator.style.background = "red";
+        if (wakeWordDetected || !isActive) {
+            setTimeout(() => recognition.start(), 1000);
+        }
+    };
 
     // Initialize
     function initializeApp() {
