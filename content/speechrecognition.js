@@ -26,12 +26,14 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.API_TIMEOUT = 10000;
 
             // OAuth Configuration
-            this.OAUTH_CONFIG = {
-                clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-                redirectUri: window.location.origin,
-                scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
-                authUrl: 'https://accounts.google.com/o/oauth2/v2/auth'
-            };
+           // Replace your OAUTH_CONFIG with this:
+this.OAUTH_CONFIG = {
+    clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
+    redirectUri: window.location.origin + '/oauthcallback.html', // Add a dedicated callback page
+    scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
+    authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenUrl: 'https://oauth2.googleapis.com/token'
+};
 
             // Initialize the app
             this.initUI();
@@ -338,43 +340,37 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const code = params.get('code');
             const state = params.get('state');
             const error = params.get('error');
-
+        
             if (error) {
                 console.error('OAuth error:', error);
                 this.speak("Login failed. Please try again.");
+                window.location.href = window.location.origin; // Redirect back to main page
                 return;
             }
-
+        
             const storedState = sessionStorage.getItem('oauth_state');
             if (state !== storedState) {
                 console.error('State mismatch');
                 this.speak("Login failed due to security error.");
+                window.location.href = window.location.origin;
                 return;
             }
             sessionStorage.removeItem('oauth_state');
-
+        
             if (code) {
                 try {
-                    const response = await this.withRetry(
-                        this.fetchWithTimeout,
-                        [
-                            'https://oauth2.googleapis.com/token',
-                            {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/x-www-form-urlencoded'
-                                },
-                                body: new URLSearchParams({
-                                    code: code,
-                                    client_id: this.OAUTH_CONFIG.clientId,
-                                    redirect_uri: this.OAUTH_CONFIG.redirectUri,
-                                    grant_type: 'authorization_code'
-                                }),
-                                timeout: this.API_TIMEOUT
-                            }
-                        ],
-                        "tokenExchange"
-                    );
+                    const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: new URLSearchParams({
+                            code: code,
+                            client_id: this.OAUTH_CONFIG.clientId,
+                            redirect_uri: this.OAUTH_CONFIG.redirectUri,
+                            grant_type: 'authorization_code'
+                        })
+                    });
                     
                     const data = await response.json();
                     if (data.error) throw new Error(data.error);
@@ -387,11 +383,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     localStorage.setItem('expires_at', expiresAt);
                     this.isAuthenticated = true;
                     
-                    const redirectUrl = sessionStorage.getItem('postAuthRedirect') || 'https://mail.google.com';
+                    // Redirect back to main page
+                    const redirectUrl = sessionStorage.getItem('postAuthRedirect') || window.location.origin;
                     window.location.href = redirectUrl;
                 } catch (error) {
                     console.error('Token exchange failed:', error);
                     this.speak("Login failed. Please try again.");
+                    window.location.href = window.location.origin;
                 }
             }
         }
