@@ -1,132 +1,115 @@
 const express = require('express');
-const fs = require('fs');
 const { google } = require('googleapis');
-const cors = require('cors');
+const fs = require('fs');
 const path = require('path');
+const cors = require('cors');
 
 const app = express();
+const PORT = 8080;
+
+// Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-
-const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
-const TOKEN_PATH = path.join(__dirname, 'token.json');
-const CREDENTIALS_PATH = path.join(__dirname, 'credentials.json');
+app.use(express.urlencoded({ extended: true }));
 
 // Load credentials
-function loadCredentials() {
-    if (!fs.existsSync(CREDENTIALS_PATH)) {
-        throw new Error('Missing credentials.json');
-    }
-    const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH));
-    return credentials.web || credentials.installed;
+let credentials;
+try {
+  credentials = JSON.parse(fs.readFileSync('client_secret.json'));
+} catch (err) {
+  console.error("Error loading client_secret.json:", err);
+  process.exit(1);
 }
 
-// Initialize OAuth2 client
-function getOAuth2Client() {
-    const { client_secret, client_id, redirect_uris } = loadCredentials();
-    return new google.auth.OAuth2(
-        client_id,
-        client_secret,
-        redirect_uris[0]
-    );
-}
+const { client_secret, client_id, redirect_uris } = credentials.web;
+const oAuth2Client = new google.auth.OAuth2(
+  client_id,
+  client_secret,
+  redirect_uris[0] || 'http://localhost:8080/callback'
+);
 
-// Generate auth URL endpoint
-app.get('/auth/url', (req, res) => {
-    const oAuth2Client = getOAuth2Client();
-    const authUrl = oAuth2Client.generateAuthUrl({
-        access_type: 'offline',
-        scope: SCOPES,
-        prompt: 'consent'
+// Token storage
+const TOKEN_PATH = path.join(__dirname, 'token.json');
+
+// Store pending auth states
+const authStates = new Map();
+
+// Routes
+app.get('/auth', (req, res) => {
+  const { returnTo } = req.query;
+  const state = Math.random().toString(36).substring(2, 15);
+  
+  authStates.set(state, { 
+    returnTo: returnTo || 'https://mail.google.com',
+    timestamp: Date.now()
+  });
+
+  // Clean up old states
+  cleanupAuthStates();
+
+  const authUrl = oAuth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.modify',
+      'https://www.googleapis.com/auth/gmail.send'
+    ],
+    state: state,
+    prompt: 'consent'
+  });
+
+  res.redirect(authUrl);
+});
+
+app.get('/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+
+  if (error) {
+    console.error('OAuth error:', error);
+    return res.status(400).send(`Authentication failed: ${error}`);
+  }
+
+  if (!authStates.has(state)) {
+    return res.status(400).send('Invalid state parameter');
+  }
+
+  const { returnTo } = authStates.get(state);
+  authStates.delete(state);
+
+  try {
+    const { tokens } = await oAuth2Client.getToken(code);
+    oAuth2Client.setCredentials(tokens);
+
+    // Save tokens for future use
+    fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
+
+    // Redirect back to Gmail with tokens in URL fragment
+    const tokenParams = new URLSearchParams({
+      access_token: tokens.access_token,
+      token_type: tokens.token_type,
+      expires_in: tokens.expires_in,
+      scope: tokens.scope
     });
-    res.json({ authUrl });
+
+    res.redirect(`${returnTo}#${tokenParams.toString()}`);
+  } catch (err) {
+    console.error('Error getting tokens:', err);
+    res.status(500).send('Authentication failed');
+  }
 });
 
-// Token exchange endpoint
-app.post('/auth/callback', async (req, res) => {
-    try {
-        const { code } = req.body;
-        const oAuth2Client = getOAuth2Client();
-        const { tokens } = await oAuth2Client.getToken(code);
-        
-        // Save token for server use
-        fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
-        
-        res.json({
-            access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token,
-            redirect_url: "https://mail.google.com/mail/u/0/#inbox?login_success=true"
-        });
-    } catch (error) {
-        console.error('Token exchange error:', error);
-        res.status(500).json({ error: 'Failed to exchange token' });
+// Helper function to clean up old states
+function cleanupAuthStates() {
+  const now = Date.now();
+  for (const [state, { timestamp }] of authStates) {
+    if (now - timestamp > 3600000) { // 1 hour
+      authStates.delete(state);
     }
-});
-
-// Token verification endpoint
-app.post('/api/verify-token', async (req, res) => {
-    try {
-        const { token } = req.body;
-        const oAuth2Client = getOAuth2Client();
-        oAuth2Client.setCredentials({ access_token: token });
-        
-        const oauth2 = google.oauth2({
-            auth: oAuth2Client,
-            version: 'v2'
-        });
-        
-        await oauth2.userinfo.get();
-        res.json({ valid: true });
-    } catch (error) {
-        res.json({ valid: false });
-    }
-});
-
-// Email fetching endpoint
-app.get('/api/emails', async (req, res) => {
-    try {
-        const { token } = req.query;
-        if (!token) return res.status(400).json({ error: 'Missing token' });
-
-        const auth = new google.auth.OAuth2();
-        auth.setCredentials({ access_token: token });
-        
-        const gmail = google.gmail({ version: 'v1', auth });
-        const response = await gmail.users.messages.list({
-            userId: 'me',
-            q: 'is:unread',
-            maxResults: 5
-        });
-
-        if (!response.data.messages) return res.json({ emails: [] });
-
-        const emails = await Promise.all(
-            response.data.messages.map(async (msg) => {
-                const email = await gmail.users.messages.get({
-                    userId: 'me',
-                    id: msg.id,
-                    format: 'metadata',
-                    metadataHeaders: ['From', 'Subject']
-                });
-                
-                const headers = email.data.payload.headers;
-                return {
-                    from: headers.find(h => h.name === 'From')?.value || '',
-                    subject: headers.find(h => h.name === 'Subject')?.value || ''
-                };
-            })
-        );
-
-        res.json({ emails });
-    } catch (error) {
-        console.error('Email fetch error:', error);
-        res.status(500).json({ error: 'Failed to fetch emails' });
-    }
-});
+  }
+}
 
 // Start server
-const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`OAuth server running on http://localhost:${PORT}`);
+  console.log('Make sure this matches your Google Cloud Console redirect URIs');
 });
