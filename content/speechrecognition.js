@@ -3,6 +3,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 } else {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
+    setTimeout(() => recognition.start(), 0);
 
     recognition.continuous = true;
     recognition.interimResults = false;
