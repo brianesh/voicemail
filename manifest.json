@@ -8,6 +8,14 @@
   "background": {
     "service_worker": "background/background.js"
   },
+ "oauth2": {
+    "client_id": "629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/gmail.modify",
+      "https://www.googleapis.com/auth/gmail.send"
+    ]
+  },
   "action": {
     "default_icon": {
       "16": "assets/icons/icon16.png",

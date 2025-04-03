@@ -26,7 +26,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     // OAuth Configuration
     const OAUTH_CONFIG = {
         clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-        redirectUri: 'https://mail.google.com',
+        redirectUri: chrome.identity.getRedirectURL() || 'https://your-extension-id.chromiumapp.org',
         scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
         authUrl: 'https://accounts.google.com/o/oauth2/v2/auth'
     };
@@ -242,27 +242,88 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     // Authentication Functions
-    function checkAuthStatus() {
-        const accessToken = localStorage.getItem("access_token");
-        const expiresAt = localStorage.getItem("expires_at");
-        isAuthenticated = !!accessToken && new Date().getTime() < expiresAt;
-        return isAuthenticated;
+    function startAuthFlow() {
+        // Store the current tab URL before redirecting
+        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+            if (tabs[0]) {
+                chrome.storage.local.set({originalUrl: tabs[0].url});
+            }
+            
+            // Start OAuth flow
+            const authUrl = `${OAUTH_CONFIG.authUrl}?` +
+                `client_id=${encodeURIComponent(OAUTH_CONFIG.clientId)}&` +
+                `redirect_uri=${encodeURIComponent(OAUTH_CONFIG.redirectUri)}&` +
+                `response_type=token&` +
+                `scope=${encodeURIComponent(OAUTH_CONFIG.scope)}`;
+                
+            chrome.identity.launchWebAuthFlow({
+                url: authUrl,
+                interactive: true
+            }, function(redirectUrl) {
+                if (chrome.runtime.lastError) {
+                    console.error('Auth error:', chrome.runtime.lastError);
+                    return;
+                }
+                
+                // Extract token from redirect URL
+                const token = new URL(redirectUrl).hash.split('&')
+                    .find(param => param.startsWith('access_token='))
+                    ?.split('=')[1];
+                    
+                if (token) {
+                    // Store authentication state
+                    chrome.storage.local.set({
+                        isAuthenticated: true,
+                        authToken: token,
+                        tokenTimestamp: Date.now()
+                    });
+                    
+                    // Redirect back to original page if available
+                    chrome.storage.local.get('originalUrl', function(data) {
+                        if (data.originalUrl) {
+                            chrome.tabs.update({url: data.originalUrl});
+                        }
+                    });
+                }
+            });
+        });
     }
-
+    
+    // Check authentication status
+    function checkAuthStatus(callback) {
+        chrome.storage.local.get(['isAuthenticated', 'authToken', 'tokenTimestamp'], function(data) {
+            const isExpired = data.tokenTimestamp && 
+                             (Date.now() - data.tokenTimestamp) > (60 * 60 * 1000); // 1 hour expiration
+            
+            if (data.isAuthenticated && data.authToken && !isExpired) {
+                callback(true, data.authToken);
+            } else {
+                // Clear expired/invalid auth
+                chrome.storage.local.remove(['isAuthenticated', 'authToken', 'tokenTimestamp']);
+                callback(false);
+            }
+        });
+    }
+    
+    // Update your ensureValidToken function to use the new checkAuthStatus
     async function ensureValidToken() {
-        if (checkAuthStatus()) {
-            return localStorage.getItem('access_token');
-        }
-        
-        const refreshed = await refreshToken();
-        if (refreshed) {
-            return localStorage.getItem('access_token');
-        }
-        
-        initiateOAuthLogin();
-        throw new Error("Authentication required. Please log in.");
+        return new Promise((resolve, reject) => {
+            checkAuthStatus((authenticated, token) => {
+                if (authenticated) {
+                    resolve(token);
+                } else {
+                    startAuthFlow();
+                    reject(new Error("Authentication required. Please log in."));
+                }
+            });
+        });
     }
-
+    
+    // Update your initiateOAuthLogin function to use startAuthFlow
+    function initiateOAuthLogin() {
+        startAuthFlow();
+    }
+    
     async function refreshToken() {
         const refreshToken = localStorage.getItem('refresh_token');
         if (!refreshToken) {
