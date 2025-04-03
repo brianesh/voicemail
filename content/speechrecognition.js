@@ -26,14 +26,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.API_TIMEOUT = 10000;
 
             // OAuth Configuration
-           // Replace your OAUTH_CONFIG with this:
-this.OAUTH_CONFIG = {
-    clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-    redirectUri: window.location.origin + '/oauthcallback.html', // Add a dedicated callback page
-    scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
-    authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
-    tokenUrl: 'https://oauth2.googleapis.com/token'
-};
+            this.OAUTH_CONFIG = {
+                clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
+                redirectUri: window.location.origin,
+                scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
+                authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+                tokenUrl: 'https://oauth2.googleapis.com/token'
+            };
 
             // Initialize the app
             this.initUI();
@@ -313,6 +312,37 @@ this.OAUTH_CONFIG = {
                 return localStorage.getItem('access_token');
             }
             
+            const refreshToken = localStorage.getItem('refresh_token');
+            if (refreshToken) {
+                try {
+                    const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: new URLSearchParams({
+                            client_id: this.OAUTH_CONFIG.clientId,
+                            refresh_token: refreshToken,
+                            grant_type: 'refresh_token'
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error);
+                    
+                    const expiresAt = new Date().getTime() + (data.expires_in * 1000);
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('expires_at', expiresAt);
+                    this.isAuthenticated = true;
+                    
+                    return data.access_token;
+                } catch (error) {
+                    console.error('Token refresh failed:', error);
+                    await this.startAuthFlow();
+                    throw new Error("Authentication required. Please log in.");
+                }
+            }
+            
             await this.startAuthFlow();
             throw new Error("Authentication required. Please log in.");
         }
@@ -344,7 +374,7 @@ this.OAUTH_CONFIG = {
             if (error) {
                 console.error('OAuth error:', error);
                 this.speak("Login failed. Please try again.");
-                window.location.href = window.location.origin; // Redirect back to main page
+                window.location.href = window.location.origin;
                 return;
             }
         
