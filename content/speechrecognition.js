@@ -11,6 +11,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         constructor() {
             this.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             this.recognition = new this.SpeechRecognition();
+            this.recognition.start();
             this.cleanupFunctions = [];
             
             // State variables
