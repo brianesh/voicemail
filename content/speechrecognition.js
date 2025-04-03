@@ -1,12 +1,15 @@
 if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
     console.error("Speech Recognition not supported in this browser.");
+    alert("Your browser doesn't support speech recognition. Please use Chrome or Edge.");
 } else {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
 
+    // Configuration
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
+    recognition.maxAlternatives = 1;
 
     // State variables
     let isActive = true;
@@ -20,70 +23,88 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     let isOnline = navigator.onLine;
     let retryAttempts = 0;
     const MAX_RETRIES = 2;
-    const API_RATE_LIMIT = 5; // Max API calls per minute
-    const API_TIMEOUT = 10000; // 10 seconds timeout
+    const API_RATE_LIMIT = 5;
+    const API_TIMEOUT = 10000;
+    const COMMAND_TIMEOUT = 3000;
 
-    // OAuth Configuration
+    // OAuth Configuration (Replace with your actual credentials)
     const OAUTH_CONFIG = {
-        clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-        redirectUri: 'https://mail.google.com',
+        clientId: 'YOUR_CLIENT_ID.apps.googleusercontent.com',
+        redirectUri: 'https://mail.google.com' + '/oauth-callback.html',
         scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
-        authUrl: 'https://accounts.google.com/o/oauth2/v2/auth'
+        authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+        tokenUrl: 'https://oauth2.googleapis.com/token'
     };
 
     // UI Elements
-    const popup = document.createElement("div");
-    popup.id = "speech-popup";
-    popup.style.cssText = `
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        width: 250px;
-        padding: 15px;
-        background: rgba(0, 0, 0, 0.9);
-        color: white;
-        font-size: 16px;
-        border-radius: 10px;
-        display: none;
-        z-index: 9999;
-        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.3);
-        transition: opacity 0.5s ease-in-out;
-    `;
-    document.body.appendChild(popup);
+    const createUIElements = () => {
+        // Remove existing elements if they exist
+        const existingPopup = document.getElementById("speech-popup");
+        if (existingPopup) existingPopup.remove();
+        const existingMic = document.getElementById("mic-indicator");
+        if (existingMic) existingMic.remove();
+        const existingHistory = document.getElementById("command-history");
+        if (existingHistory) existingHistory.remove();
 
-    const micIndicator = document.createElement("div");
-    micIndicator.id = "mic-indicator";
-    micIndicator.style.cssText = `
-        position: fixed;
-        bottom: 70px;
-        right: 20px;
-        width: 20px;
-        height: 20px;
-        background: red;
-        border-radius: 50%;
-        z-index: 10000;
-        transition: background 0.3s;
-    `;
-    document.body.appendChild(micIndicator);
+        // Create popup element
+        const popup = document.createElement("div");
+        popup.id = "speech-popup";
+        popup.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 250px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            font-size: 16px;
+            border-radius: 10px;
+            display: none;
+            z-index: 9999;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.3);
+            transition: opacity 0.5s ease-in-out;
+        `;
+        document.body.appendChild(popup);
 
-    const commandHistory = document.createElement("div");
-    commandHistory.id = "command-history";
-    commandHistory.style.cssText = `
-        position: fixed;
-        bottom: 100px;
-        right: 20px;
-        width: 250px;
-        max-height: 200px;
-        overflow-y: auto;
-        padding: 10px;
-        background: rgba(0, 0, 0, 0.7);
-        color: white;
-        font-size: 14px;
-        border-radius: 10px;
-        display: none;
-        z-index: 9998;
-    `;
-    document.body.appendChild(commandHistory);
+        // Create mic indicator
+        const micIndicator = document.createElement("div");
+        micIndicator.id = "mic-indicator";
+        micIndicator.style.cssText = `
+            position: fixed;
+            bottom: 70px;
+            right: 20px;
+            width: 20px;
+            height: 20px;
+            background: red;
+            border-radius: 50%;
+            z-index: 10000;
+            transition: background 0.3s;
+        `;
+        document.body.appendChild(micIndicator);
+
+        // Create command history
+        const commandHistory = document.createElement("div");
+        commandHistory.id = "command-history";
+        commandHistory.style.cssText = `
+            position: fixed;
+            bottom: 100px;
+            right: 20px;
+            width: 250px;
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-size: 14px;
+            border-radius: 10px;
+            display: none;
+            z-index: 9998;
+        `;
+        document.body.appendChild(commandHistory);
+    };
+
+    // Initialize UI
+    createUIElements();
 
     // Network status monitoring
     window.addEventListener('online', () => {
@@ -119,13 +140,24 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         const controller = new AbortController();
         const id = setTimeout(() => controller.abort(), timeout);
         
-        const response = await fetch(resource, {
-            ...options,
-            signal: controller.signal  
-        });
-        
-        clearTimeout(id);
-        return response;
+        try {
+            const response = await fetch(resource, {
+                ...options,
+                signal: controller.signal  
+            });
+            
+            clearTimeout(id);
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+            
+            return response;
+        } catch (error) {
+            clearTimeout(id);
+            throw error;
+        }
     }
 
     // Retry wrapper for API calls
@@ -151,7 +183,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 const delay = Math.pow(2, retryAttempts) * 1000;
                 await new Promise(resolve => setTimeout(resolve, delay));
                 
-                if (error.message.includes("Authentication")) {
+                if (error.message.includes("Authentication") || error.message.includes("401")) {
                     await ensureValidToken();
                 }
             }
@@ -160,6 +192,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     // UI Functions
     function showPopup(message, status) {
+        const popup = document.getElementById("speech-popup");
+        if (!popup) return;
+        
         popup.innerHTML = `<b>Status:</b> ${status} <br> <b>You said:</b> ${message}`;
         popup.style.display = "block";
         popup.style.opacity = "1";
@@ -174,6 +209,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function addToHistory(command, response) {
+        const commandHistory = document.getElementById("command-history");
+        if (!commandHistory) return;
+        
         const entry = document.createElement("div");
         entry.innerHTML = `<b>You:</b> ${command}<br><b>System:</b> ${response}`;
         entry.style.marginBottom = "10px";
@@ -194,17 +232,20 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         
         isSpeaking = true;
         const utterance = new SpeechSynthesisUtterance(speechQueue.shift());
+        
         utterance.onend = () => {
             isSpeaking = false;
             if (speechQueue.length > 0) {
                 processQueue();
             }
         };
+        
         utterance.onerror = (event) => {
             console.error("Speech synthesis error:", event.error);
             isSpeaking = false;
             processQueue();
         };
+        
         speechSynthesis.speak(utterance);
     }
 
@@ -214,6 +255,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 console.error("Speech synthesis not supported");
                 return;
             }
+            
+            // Cancel any ongoing speech
+            if (isSpeaking) {
+                speechSynthesis.cancel();
+                isSpeaking = false;
+            }
+            
             speechQueue.push(text);
             processQueue();
         } catch (error) {
@@ -239,16 +287,21 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         return null;
     }
 
-    // Improved Authentication Functions
+    // Authentication Functions
     function checkAuthStatus() {
-        const accessToken = localStorage.getItem("access_token");
-        const expiresAt = localStorage.getItem("expires_at");
-        const refreshToken = localStorage.getItem("refresh_token");
-        
-        const now = new Date().getTime();
-        isAuthenticated = !!accessToken && !!refreshToken && now < (parseInt(expiresAt) - 300000);
-        
-        return isAuthenticated;
+        try {
+            const accessToken = localStorage.getItem("access_token");
+            const expiresAt = localStorage.getItem("expires_at");
+            const refreshToken = localStorage.getItem("refresh_token");
+            
+            const now = new Date().getTime();
+            isAuthenticated = !!accessToken && !!refreshToken && now < (parseInt(expiresAt) - 300000);
+            
+            return isAuthenticated;
+        } catch (error) {
+            console.error("Error checking auth status:", error);
+            return false;
+        }
     }
 
     async function ensureValidToken() {
@@ -277,7 +330,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         
         try {
             const response = await fetchWithTimeout(
-                'https://oauth2.googleapis.com/token',
+                OAUTH_CONFIG.tokenUrl,
                 {
                     method: 'POST',
                     headers: {
@@ -291,10 +344,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     timeout: API_TIMEOUT
                 }
             );
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
             
             const data = await response.json();
             
@@ -318,47 +367,52 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     }
 
     function initiateOAuthLogin() {
-        const state = crypto.randomUUID();
-        sessionStorage.setItem('oauth_state', state);
-        sessionStorage.setItem('postAuthRedirect', window.location.href);
-        
-        const params = new URLSearchParams({
-            client_id: OAUTH_CONFIG.clientId,
-            redirect_uri: OAUTH_CONFIG.redirectUri,
-            response_type: 'code',
-            scope: OAUTH_CONFIG.scope,
-            state: state,
-            access_type: 'offline',
-            prompt: 'consent'
-        });
+        try {
+            const state = crypto.randomUUID();
+            sessionStorage.setItem('oauth_state', state);
+            sessionStorage.setItem('postAuthRedirect', window.location.href);
+            
+            const params = new URLSearchParams({
+                client_id: OAUTH_CONFIG.clientId,
+                redirect_uri: OAUTH_CONFIG.redirectUri,
+                response_type: 'code',
+                scope: OAUTH_CONFIG.scope,
+                state: state,
+                access_type: 'offline',
+                prompt: 'consent'
+            });
 
-        window.location.href = `${OAUTH_CONFIG.authUrl}?${params.toString()}`;
+            window.location.href = `${OAUTH_CONFIG.authUrl}?${params.toString()}`;
+        } catch (error) {
+            console.error("Error initiating OAuth login:", error);
+            speak("Error initiating login. Please try again.");
+        }
     }
 
     async function handleOAuthResponse() {
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get('code');
-        const state = params.get('state');
-        const error = params.get('error');
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const code = params.get('code');
+            const state = params.get('state');
+            const error = params.get('error');
 
-        if (error) {
-            console.error('OAuth error:', error);
-            speak("Login failed. Please try again.");
-            return;
-        }
+            if (error) {
+                console.error('OAuth error:', error);
+                speak("Login failed. Please try again.");
+                return;
+            }
 
-        const storedState = sessionStorage.getItem('oauth_state');
-        if (state !== storedState) {
-            console.error('State mismatch');
-            speak("Login failed due to security error.");
-            return;
-        }
-        sessionStorage.removeItem('oauth_state');
+            const storedState = sessionStorage.getItem('oauth_state');
+            if (state !== storedState) {
+                console.error('State mismatch');
+                speak("Login failed due to security error.");
+                return;
+            }
+            sessionStorage.removeItem('oauth_state');
 
-        if (code) {
-            try {
+            if (code) {
                 const response = await fetchWithTimeout(
-                    'https://oauth2.googleapis.com/token',
+                    OAUTH_CONFIG.tokenUrl,
                     {
                         method: 'POST',
                         headers: {
@@ -373,10 +427,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                         timeout: API_TIMEOUT
                     }
                 );
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
                 
                 const data = await response.json();
                 
@@ -394,15 +444,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 
                 const redirectUrl = sessionStorage.getItem('postAuthRedirect') || window.location.origin;
                 window.location.href = redirectUrl;
-            } catch (error) {
-                console.error('Token exchange failed:', error);
-                speak("Login failed. Please try again.");
             }
+        } catch (error) {
+            console.error('Token exchange failed:', error);
+            speak("Login failed. Please try again.");
         }
-    }
-
-    if (window.location.search.includes('code=')) {
-        handleOAuthResponse();
     }
 
     // Email Operations
@@ -1255,7 +1301,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             
             if (error.message.includes("Too many requests")) {
                 errorMessage = error.message;
-            } else if (error.message.includes("Authentication")) {
+            } else if (error.message.includes("Authentication") || error.message.includes("401")) {
                 errorMessage = "Please log in to continue.";
             } else if (!isOnline) {
                 errorMessage = "No internet connection available.";
@@ -1275,7 +1321,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     function executeCommand(transcript) {
         let now = Date.now();
         
-        if (now - lastCommandTime < 3000) return;
+        if (now - lastCommandTime < COMMAND_TIMEOUT) return;
         lastCommandTime = now;
 
         const parsedCommand = parseCommand(transcript);
@@ -1350,13 +1396,16 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     // Recognition handlers
     recognition.onstart = () => {
         isListening = true;
-        micIndicator.style.background = "green";
+        const micIndicator = document.getElementById("mic-indicator");
+        if (micIndicator) micIndicator.style.background = "green";
         showPopup("Microphone activated - Listening...", "ON");
         speak("Ready for your commands");
     };
 
     recognition.onresult = (event) => {
-        let result = event.results[event.results.length - 1][0];
+        if (!event.results || event.results.length === 0) return;
+        
+        const result = event.results[event.results.length - 1][0];
         let transcript = result.transcript.trim();
         let confidence = result.confidence;
 
@@ -1398,21 +1447,60 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
     recognition.onend = () => {
         isListening = false;
-        micIndicator.style.background = "red";
+        const micIndicator = document.getElementById("mic-indicator");
+        if (micIndicator) micIndicator.style.background = "red";
         if (wakeWordDetected || !isActive) {
             setTimeout(() => recognition.start(), 1000);
         }
+    };
+
+    recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        
+        let errorMessage = "Speech recognition error occurred.";
+        switch(event.error) {
+            case 'no-speech':
+                errorMessage = "No speech detected.";
+                break;
+            case 'audio-capture':
+                errorMessage = "No microphone was found.";
+                break;
+            case 'not-allowed':
+                errorMessage = "Microphone access was denied.";
+                break;
+            default:
+                errorMessage = `Speech recognition error: ${event.error}`;
+        }
+        
+        showPopup(errorMessage, "ERROR");
+        speak(errorMessage);
+        
+        // Attempt to restart recognition
+        setTimeout(() => recognition.start(), 1000);
     };
 
     // Initialize
     function initializeApp() {
         console.log("Initializing application...");
         
+        // Check if we're on the OAuth callback page
+        if (window.location.pathname.includes('oauth-callback.html')) {
+            handleOAuthResponse();
+            return;
+        }
+        
         const authStatus = checkAuthStatus();
         console.log("Initial auth status:", authStatus);
         
-        recognition.start();
+        // Start speech recognition
+        try {
+            recognition.start();
+        } catch (error) {
+            console.error("Error starting speech recognition:", error);
+            showPopup("Error starting microphone. Please refresh the page.", "ERROR");
+        }
         
+        // Periodically check auth status
         setInterval(() => {
             const wasAuthenticated = isAuthenticated;
             checkAuthStatus();
@@ -1422,5 +1510,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }, 300000); // 5 minutes
     }
 
+    // Start the app
     initializeApp();
 }
