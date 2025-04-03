@@ -1,4 +1,4 @@
-// Voice Email Assistant - Complete Working Version
+// Voice Email Assistant - Improved Version
 if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
     console.error("Speech Recognition not supported in this browser.");
     alert("Your browser doesn't support speech recognition. Please use Chrome or Edge.");
@@ -28,15 +28,23 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.API_RATE_LIMIT = 5;
             this.API_TIMEOUT = 10000;
 
-            // OAuth Configuration with your actual credentials
+            // OAuth Configuration - REPLACE WITH YOUR ACTUAL CREDENTIALS
             this.OAUTH_CONFIG = {
-                clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-                clientSecret: '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',
+                clientId: 'YOUR_CLIENT_ID.apps.googleusercontent.com',
+                clientSecret: 'YOUR_CLIENT_SECRET',
                 redirectUri: this.getRedirectUri(),
                 scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
                 authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
                 tokenUrl: 'https://oauth2.googleapis.com/token'
             };
+
+            // Verify OAuth configuration
+            if (!this.OAUTH_CONFIG.clientId || this.OAUTH_CONFIG.clientId.includes('YOUR_CLIENT_ID')) {
+                console.error("OAuth configuration is incomplete");
+                this.showPopup("Configuration error", "ERROR");
+                this.speak("This application is not properly configured. Please contact support.");
+                return;
+            }
 
             // Initialize the app
             this.initUI();
