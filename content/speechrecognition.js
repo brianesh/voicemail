@@ -401,71 +401,59 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             authUrl.searchParams.append('access_type', 'offline');
             authUrl.searchParams.append('prompt', 'consent');
             
-            if (!window.location.pathname.includes('oauth-callback')) {
-                localStorage.setItem('postAuthRedirect', window.location.href);
-            }
-            
             window.location.href = authUrl.toString();
         }
 
         async handleOAuthResponse() {
-            const params = new URLSearchParams(window.location.search);
-            
-            if (params.get('error')) {
-                const error = params.get('error');
-                const errorDesc = params.get('error_description') || 'No description';
-                console.error('OAuth Error:', error, errorDesc);
-                this.showPopup(`Auth Error: ${error}`, "ERROR");
-                return;
-            }
+    const params = new URLSearchParams(window.location.search);
+    
+    if (params.get('error')) {
+        const error = params.get('error');
+        console.error('OAuth Error:', error);
+        this.showPopup(`Auth Error: ${error}`, "ERROR");
+        return;
+    }
+    
+    const code = params.get('code');
+    if (!code) {
+        console.error('Missing authorization code');
+        return;
+    }
+    
+    try {
+        const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                code,
+                client_id: this.OAUTH_CONFIG.clientId,
+                redirect_uri: this.OAUTH_CONFIG.redirectUri,
+                grant_type: 'authorization_code'
+            })
+        });
         
-            const code = params.get('code');
+        if (!response.ok) throw new Error('Token exchange failed');
         
-            if (!code) {
-                console.error('Missing authorization code');
-                this.showPopup("Missing authorization code", "ERROR");
-                return;
-            }
+        const tokens = await response.json();
         
-            try {
-                const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({
-                        code,
-                        client_id: this.OAUTH_CONFIG.clientId,
-                        redirect_uri: this.OAUTH_CONFIG.redirectUri,
-                        grant_type: 'authorization_code'
-                    })
-                });
+        localStorage.setItem('access_token', tokens.access_token);
+        localStorage.setItem('expires_at', Date.now() + (tokens.expires_in * 1000));
         
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    console.error('Token exchange failed:', errorData);
-                    throw new Error(errorData.error || 'Token exchange failed');
-                }
-        
-                const tokens = await response.json();
-        
-                localStorage.setItem('access_token', tokens.access_token);
-                localStorage.setItem('expires_at', Date.now() + (tokens.expires_in * 1000));
-                
-                if (tokens.refresh_token) {
-                    localStorage.setItem('refresh_token', tokens.refresh_token);
-                }
-        
-                this.isAuthenticated = true;
-                document.getElementById('login-button').style.display = 'none';
-        
-                const redirectUrl = localStorage.getItem('postAuthRedirect') || window.location.origin;
-                localStorage.removeItem('postAuthRedirect');
-                window.location.href = redirectUrl;
-        
-            } catch (error) {
-                console.error('Authentication failed:', error);
-                this.showPopup(`Auth Failed: ${error.message}`, "ERROR");
-            }
+        if (tokens.refresh_token) {
+            localStorage.setItem('refresh_token', tokens.refresh_token);
         }
+        
+        this.isAuthenticated = true;
+        document.getElementById('login-button').style.display = 'none';
+        
+        // Redirect to clean URL
+        window.location.href = window.location.origin;
+        
+    } catch (error) {
+        console.error('Authentication failed:', error);
+        this.showPopup('Authentication failed', "ERROR");
+    }
+}
         
         // Network and API Functions
         checkRateLimit() {
