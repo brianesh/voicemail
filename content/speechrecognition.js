@@ -31,7 +31,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             // OAuth Configuration - REPLACE WITH YOUR ACTUAL CREDENTIALS
             this.OAUTH_CONFIG = {
                 clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-                redirectUri: 'http://localhost:8080/oauth-callback', // No .html extension
+                redirectUri: 'http://localhost:8080/oauth-callback',
                 scope: [
                   'https://www.googleapis.com/auth/gmail.readonly',
                   'https://www.googleapis.com/auth/gmail.modify',
@@ -40,6 +40,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
                 tokenUrl: 'https://oauth2.googleapis.com/token'
               };
+
             // Verify OAuth configuration
             if (!this.OAUTH_CONFIG.clientId || this.OAUTH_CONFIG.clientId.includes('YOUR_CLIENT_ID')) {
                 console.error("OAuth configuration is incomplete");
@@ -406,11 +407,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         
         async startAuthFlow() {
             const verifier = this.generateCodeVerifier();
+            const state = this.generateRandomString(16);
             
-            // Store just the verifier
+            // Store verifier and state
             localStorage.setItem('pkce_verifier', verifier);
+            localStorage.setItem('oauth_state', state);
             
-            // Build the auth URL without state
+            // Build the auth URL with state
             const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
             authUrl.searchParams.append('response_type', 'code');
             authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
@@ -420,6 +423,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             authUrl.searchParams.append('code_challenge_method', 'S256');
             authUrl.searchParams.append('access_type', 'offline');
             authUrl.searchParams.append('prompt', 'consent');
+            authUrl.searchParams.append('state', state);
             
             // Store current location for post-auth redirect
             if (!window.location.pathname.includes('oauth-callback')) {
@@ -432,6 +436,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         
         generateCodeVerifier() {
             const array = new Uint8Array(32);
+            crypto.getRandomValues(array);
+            return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        
+        generateRandomString(length) {
+            const array = new Uint8Array(length);
             crypto.getRandomValues(array);
             return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
         }
@@ -458,20 +468,29 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 return;
             }
         
-            // SKIPPING STATE VALIDATION ENTIRELY
-            console.warn("SECURITY WARNING: Skipping state parameter validation");
+            // 2. Validate state parameter
+            const receivedState = params.get('state');
+            const storedState = localStorage.getItem('oauth_state');
+            
+            if (!receivedState || !storedState || receivedState !== storedState) {
+                console.error('State mismatch - received:', receivedState, 'stored:', storedState);
+                this.showPopup("Security Error: Invalid session state", "ERROR");
+                localStorage.removeItem('oauth_state');
+                localStorage.removeItem('pkce_verifier');
+                return;
+            }
             
             const code = params.get('code');
             const verifier = localStorage.getItem('pkce_verifier');
         
-            // 2. Ensure we have an authorization code
+            // 3. Ensure we have an authorization code
             if (!code) {
                 console.error('Missing authorization code');
                 this.showPopup("Missing authorization code", "ERROR");
                 return;
             }
         
-            // 3. Ensure we have a valid PKCE verifier
+            // 4. Ensure we have a valid PKCE verifier
             if (!verifier) {
                 console.error('Missing PKCE verifier');
                 this.showPopup("Security Error: Missing PKCE verifier", "ERROR");
