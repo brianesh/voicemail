@@ -58,7 +58,7 @@
         localStorage.setItem('token_type', tokenType);
 
         // Get the original URL from sessionStorage
-        const originalUrl = sessionStorage.getItem('preAuthUrl') || 'https://mail.google.com';
+        const successUrl = new URL(window.location.origin + '/success.html');
         const pendingCommand = sessionStorage.getItem('pendingCommand');
         
         // Clear the stored values
