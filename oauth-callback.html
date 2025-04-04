@@ -30,7 +30,7 @@
     document.addEventListener('DOMContentLoaded', () => {
       const authStatus = document.getElementById('auth-status');
       
-      // Check for error in URL fragment (e.g., #error=...)
+      // Check for error in URL fragment
       if (window.location.hash.includes('error=')) {
         const error = new URLSearchParams(window.location.hash.substring(1)).get('error');
         const errorDesc = new URLSearchParams(window.location.hash.substring(1)).get('error_description') || '';
@@ -44,7 +44,7 @@
         return;
       }
 
-      // Extract token from URL fragment (e.g., #access_token=...)
+      // Extract token from URL fragment
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
       const accessToken = hashParams.get('access_token');
       const expiresIn = hashParams.get('expires_in') || 3600;
@@ -56,18 +56,14 @@
         localStorage.setItem('expires_at', Date.now() + (expiresIn * 1000));
         localStorage.setItem('token_type', tokenType);
 
-        // Get the original URL from sessionStorage or default to '/'
-        const returnUrl = sessionStorage.getItem('preAuthUrl') || '/';
-        sessionStorage.removeItem('preAuthUrl'); // Clean up
-
         authStatus.innerHTML = `
           <h2 class="success">Success!</h2>
-          <p>Redirecting back to application...</p>
+          <p>Redirecting to Gmail...</p>
         `;
         
-        // Redirect back to the original page
+        // Redirect to Google's Add Mail Service page
         setTimeout(() => {
-          window.location.href = returnUrl;
+          window.location.href = 'https://accounts.google.com/b/0/AddMailService';
         }, 1500);
       } else {
         authStatus.innerHTML = `
@@ -84,8 +80,8 @@
       localStorage.removeItem('expires_at');
       localStorage.removeItem('token_type');
       
-      // Redirect to auth page (this should match your app's auth start point)
-      window.location.href = 'https://accounts.google.com/b/0/AddMailService';
+      // Redirect to auth page
+      window.location.href = '/auth';
     }
   </script>
 </body>
