@@ -178,6 +178,17 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 window.removeEventListener('online', onlineHandler);
                 window.removeEventListener('offline', offlineHandler);
             });
+
+            // Add message listener for token injection confirmation
+window.addEventListener('message', (event) => {
+    if (event.data.type === 'oauth_token_injected') {
+        if (event.data.success) {
+            console.log('Token successfully injected into Gmail');
+        } else {
+            console.error('Failed to inject token into Gmail');
+        }
+    }
+});
         }
 
         initRecognition() {
@@ -385,6 +396,56 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             document.getElementById('login-button').style.display = 'block';
             return false;
         }
+    }
+
+    async injectTokenToGmail(token) {
+        // Store token in localStorage for our extension's use
+        localStorage.setItem('access_token', token);
+        localStorage.setItem('expires_at', Date.now() + 3600 * 1000);
+        
+        // For Chrome extension context, we need to inject the token into Gmail's page
+        if (chrome.identity && window.location.hostname === 'mail.google.com') {
+            try {
+                // Create a hidden iframe to set the authentication cookie
+                const iframe = document.createElement('iframe');
+                iframe.src = `https://accounts.google.com/o/oauth2/auth?client_id=${this.OAUTH_CONFIG.clientId}&response_type=token&scope=${encodeURIComponent(this.OAUTH_CONFIG.scope)}`;
+                iframe.style.display = 'none';
+                document.body.appendChild(iframe);
+                
+                // Wait for the iframe to load
+                await new Promise(resolve => {
+                    iframe.onload = resolve;
+                });
+                
+                // Execute script in the iframe's context to set the token
+                const script = `
+                    try {
+                        document.cookie = 'oauth_token=${token}; path=/; domain=.google.com; secure';
+                        window.parent.postMessage({ type: 'oauth_token_injected', success: true }, '*');
+                    } catch (e) {
+                        window.parent.postMessage({ type: 'oauth_token_injected', success: false }, '*');
+                    }
+                `;
+                
+                iframe.contentWindow.postMessage({ script }, '*');
+                
+                // Clean up
+                setTimeout(() => {
+                    document.body.removeChild(iframe);
+                }, 1000);
+                
+                this.isAuthenticated = true;
+                document.getElementById('login-button').style.display = 'none';
+                return true;
+            } catch (error) {
+                console.error('Token injection failed:', error);
+                return false;
+            }
+        }
+        
+        this.isAuthenticated = true;
+        document.getElementById('login-button').style.display = 'none';
+        return true;
     }
         
         
