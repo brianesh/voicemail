@@ -14,6 +14,11 @@
     .error {
       color: red;
     }
+    button {
+      padding: 8px 16px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -28,10 +33,13 @@
       // Check for error in URL fragment (e.g., #error=...)
       if (window.location.hash.includes('error=')) {
         const error = new URLSearchParams(window.location.hash.substring(1)).get('error');
+        const errorDesc = new URLSearchParams(window.location.hash.substring(1)).get('error_description') || '';
+        
         authStatus.innerHTML = `
           <h2 class="error">Authentication Failed</h2>
           <p>${error || 'Unknown error'}</p>
-          <button onclick="window.location.href='/'">Try Again</button>
+          ${errorDesc ? `<p>${errorDesc}</p>` : ''}
+          <button onclick="retryAuth()">Try Again</button>
         `;
         return;
       }
@@ -40,28 +48,45 @@
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
       const accessToken = hashParams.get('access_token');
       const expiresIn = hashParams.get('expires_in') || 3600;
+      const tokenType = hashParams.get('token_type') || 'Bearer';
 
       if (accessToken) {
         // Store token in localStorage
         localStorage.setItem('access_token', accessToken);
         localStorage.setItem('expires_at', Date.now() + (expiresIn * 1000));
+        localStorage.setItem('token_type', tokenType);
+
+        // Get the original URL from sessionStorage or default to '/'
+        const returnUrl = sessionStorage.getItem('preAuthUrl') || '/';
+        sessionStorage.removeItem('preAuthUrl'); // Clean up
 
         authStatus.innerHTML = `
           <h2 class="success">Success!</h2>
-          <p>You can now close this window or return to the app.</p>
+          <p>Redirecting back to application...</p>
         `;
         
-        // Redirect back to the main app after a short delay
+        // Redirect back to the original page
         setTimeout(() => {
-          window.location.href = '/';
-        }, 2000);
+          window.location.href = returnUrl;
+        }, 1500);
       } else {
         authStatus.innerHTML = `
           <h2 class="error">No Token Received</h2>
-          <p>Try logging in again.</p>
+          <p>Unable to retrieve access token from the URL.</p>
+          <button onclick="retryAuth()">Retry Authentication</button>
         `;
       }
     });
+
+    function retryAuth() {
+      // Clear any existing auth data
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('expires_at');
+      localStorage.removeItem('token_type');
+      
+      // Redirect to auth page (this should match your app's auth start point)
+      window.location.href = '/auth';
+    }
   </script>
 </body>
 </html>

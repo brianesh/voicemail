@@ -393,8 +393,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
         
         async startAuthFlow() {
+            // Store the current URL before redirecting to OAuth
+            sessionStorage.setItem('preAuthUrl', window.location.href);
+            
             const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
-            authUrl.searchParams.append('response_type', 'token'); // Key change for implicit flow
+            authUrl.searchParams.append('response_type', 'token');
             authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
             authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
             authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
