@@ -425,6 +425,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             authUrl.searchParams.append('access_type', 'offline');
             authUrl.searchParams.append('prompt', 'consent');
         
+            // Store current location for post-auth redirect
+            if (!window.location.pathname.includes('oauth-callback')) {
+                localStorage.setItem('postAuthRedirect', window.location.href);
+            }
+        
             window.location.href = authUrl.toString();
         }
         
@@ -470,6 +475,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         
             if (code) {
                 try {
+                    const verifier = localStorage.getItem('pkce_verifier');
+                    if (!verifier) {
+                        throw new Error("Missing PKCE verifier");
+                    }
+        
                     const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -477,7 +487,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                             code: code,
                             client_id: this.OAUTH_CONFIG.clientId,
                             redirect_uri: this.OAUTH_CONFIG.redirectUri,
-                            grant_type: 'authorization_code'
+                            grant_type: 'authorization_code',
+                            code_verifier: verifier
                         })
                     });
         
@@ -497,7 +508,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         
                     this.isAuthenticated = true;
                     document.getElementById('login-button').style.display = 'none';
-                    window.location.href = localStorage.getItem('postAuthRedirect') || window.location.origin;
+                    
+                    // Redirect to clean URL
+                    const redirectUrl = localStorage.getItem('postAuthRedirect') || 
+                                       window.location.origin + window.location.pathname.replace('/oauth-callback', '');
+                    window.location.href = redirectUrl;
+                    
                 } catch (error) {
                     console.error('❌ Token exchange failed:', error);
                     localStorage.removeItem('access_token');
@@ -506,7 +522,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     window.location.href = window.location.origin;
                 }
             }
-        }        
+        }
         
 
         // Network and API Functions
