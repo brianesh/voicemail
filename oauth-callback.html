@@ -1,42 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>OAuth Callback</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    .success {
+      color: green;
+    }
+    .error {
+      color: red;
+    }
+    button {
+      padding: 8px 16px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="auth-status">
+    <h2>Processing authentication...</h2>
+  </div>
 
-Copy
-<script>
-  document.addEventListener('DOMContentLoaded', () => {
-    // ... [keep existing error handling code] ...
-
-    if (accessToken) {
-      // Store token in localStorage
-      localStorage.setItem('access_token', accessToken);
-      localStorage.setItem('expires_at', Date.now() + (expiresIn * 1000));
-      localStorage.setItem('token_type', tokenType);
-
-      // Get tab ID of original Gmail window
-      const originalTabId = sessionStorage.getItem('originalTabId');
-      const pendingCommand = sessionStorage.getItem('pendingCommand');
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const authStatus = document.getElementById('auth-status');
       
-      // Clear stored values
-      sessionStorage.removeItem('originalTabId');
-      sessionStorage.removeItem('pendingCommand');
-      
-      authStatus.innerHTML = `
-        <h2 class="success">Success!</h2>
-        <p>Returning to Gmail...</p>
-      `;
+      // Check for error in URL fragment
+      if (window.location.hash.includes('error=')) {
+        const error = new URLSearchParams(window.location.hash.substring(1)).get('error');
+        const errorDesc = new URLSearchParams(window.location.hash.substring(1)).get('error_description') || '';
+        
+        authStatus.innerHTML = `
+          <h2 class="error">Authentication Failed</h2>
+          <p>${error || 'Unknown error'}</p>
+          ${errorDesc ? `<p>${errorDesc}</p>` : ''}
+          <button onclick="retryAuth()">Try Again</button>
+        `;
+        return;
+      }
 
-      setTimeout(() => {
-        if (originalTabId) {
-          // Update the original tab
-          chrome.tabs.update(parseInt(originalTabId), {
-            url: `https://mail.google.com/mail/u/0/?auth_success=true${pendingCommand ? '&pending_command=true' : ''}`,
-            active: true
-          });
-          window.close(); // Close the auth window
-        } else {
-          // Fallback for non-extension contexts
-          window.location.href = `https://mail.google.com/mail/u/0/?auth_success=true${pendingCommand ? '&pending_command=true' : ''}`;
-        }
-      }, 1000);
-      
+      // Extract token from URL fragment
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const expiresIn = hashParams.get('expires_in') || 3600;
+      const tokenType = hashParams.get('token_type') || 'Bearer';
+
+      if (accessToken) {
+        // Store token in localStorage
+        localStorage.setItem('access_token', accessToken);
+        localStorage.setItem('expires_at', Date.now() + (expiresIn * 1000));
+        localStorage.setItem('token_type', tokenType);
+
+        // Get the original tab ID from sessionStorage
+        const originalTabId = sessionStorage.getItem('originalTabId');
+        const pendingCommand = sessionStorage.getItem('pendingCommand');
+        
+        // Clear the stored values
+        sessionStorage.removeItem('originalTabId');
+        sessionStorage.removeItem('pendingCommand');
+        
+        authStatus.innerHTML = `
+          <h2 class="success">Success!</h2>
+          <p>Returning to Gmail...</p>
+        `;
+        
+        // Redirect handling
+        setTimeout(() => {
+          const gmailUrl = new URL('https://mail.google.com/mail/u/0/');
+          gmailUrl.searchParams.set('auth_success', 'true');
+          
+          if (pendingCommand) {
+            gmailUrl.searchParams.set('pending_command', 'true');
+          }
+
+          if (typeof chrome !== 'undefined' && chrome.tabs && originalTabId) {
+            // Extension context - update original tab
+            chrome.tabs.update(parseInt(originalTabId), {
+              url: gmailUrl.toString(),
+              active: true
+            }, () => {
+              window.close(); // Close the auth window
+            });
+          } else {
+            // Non-extension context
+            window.location.href = gmailUrl.toString();
+          }
+        }, 1000);
       } else {
         authStatus.innerHTML = `
           <h2 class="error">No Token Received</h2>

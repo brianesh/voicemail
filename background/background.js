@@ -4,6 +4,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "wakeWordDetected") {
         listeningStatus = "ON";
         chrome.storage.local.set({ listeningStatus });
+        
+        // Before opening auth window:
+chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+    if (tabs.length > 0) {
+      sessionStorage.setItem('originalTabId', tabs[0].id.toString());
+    }
+    // Proceed with auth flow...
+  });
 
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs.length > 0) {
