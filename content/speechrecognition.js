@@ -31,7 +31,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             // OAuth Configuration - Modified for implicit flow
             this.OAUTH_CONFIG = {
                 clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-                redirectUri: window.location.origin + '/oauth-callback',
+                redirectUri: 'http://localhost:8080/oauth-callback',
                 scope: [
                     'https://www.googleapis.com/auth/gmail.readonly',
                     'https://www.googleapis.com/auth/gmail.modify',
