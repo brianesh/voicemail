@@ -334,7 +334,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const token = localStorage.getItem('access_token');
             const expiresAt = localStorage.getItem('expires_at');
             const isExpired = expiresAt && (Date.now() > parseInt(expiresAt));
-            
+        
             if (token && !isExpired) {
                 this.isAuthenticated = true;
                 document.getElementById('login-button').style.display = 'none';
@@ -348,12 +348,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 return false;
             }
         }
-
+        
         async ensureValidToken() {
             if (this.checkAuthStatus()) {
                 return localStorage.getItem('access_token');
             }
-            
+        
             const refreshToken = localStorage.getItem('refresh_token');
             if (refreshToken) {
                 try {
@@ -368,23 +368,22 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                             grant_type: 'refresh_token'
                         })
                     });
-                    
+        
                     if (!response.ok) {
                         throw new Error(`Refresh failed with status ${response.status}`);
                     }
-                    
+        
                     const data = await response.json();
                     if (data.error) throw new Error(data.error);
-                    
+        
                     const expiresAt = new Date().getTime() + (data.expires_in * 1000);
                     localStorage.setItem('access_token', data.access_token);
                     localStorage.setItem('expires_at', expiresAt);
-                    
-                    // Store new refresh token if provided
+        
                     if (data.refresh_token) {
                         localStorage.setItem('refresh_token', data.refresh_token);
                     }
-                    
+        
                     this.isAuthenticated = true;
                     document.getElementById('login-button').style.display = 'none';
                     return data.access_token;
@@ -395,26 +394,26 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     localStorage.removeItem('refresh_token');
                     this.isAuthenticated = false;
                     document.getElementById('login-button').style.display = 'block';
-                    
+        
                     await this.startAuthFlow();
                     throw new Error("Authentication required. Please log in.");
                 }
             }
-            
+        
             await this.startAuthFlow();
             throw new Error("Authentication required. Please log in.");
         }
-
-        async startAuthFlow() {
-            // Generate PKCE verifier and state
-            const verifier = this.generateCodeVerifier(); // Add this method to your class
-            const state = crypto.getRandomValues(new Uint32Array(2)).join('');
-            
-            // Store securely
-            sessionStorage.setItem('oauth_state', state);
-            sessionStorage.setItem('pkce_verifier', verifier);
         
-            // Generate auth URL with PKCE
+        async startAuthFlow() {
+            const verifier = this.generateCodeVerifier();
+            const state = crypto.getRandomValues(new Uint32Array(2)).join('');
+        
+            // Store in localStorage for persistence
+            localStorage.setItem('oauth_state', state);
+            localStorage.setItem('pkce_verifier', verifier);
+        
+            console.log("Generated State:", state);
+        
             const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
             authUrl.searchParams.append('response_type', 'code');
             authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
@@ -429,7 +428,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             window.location.href = authUrl.toString();
         }
         
-        // Add these methods to your class:
         generateCodeVerifier() {
             const array = new Uint8Array(32);
             crypto.getRandomValues(array);
@@ -445,33 +443,35 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 .replace(/\//g, '_')
                 .replace(/=+$/, '');
         }
-
+        
         async handleOAuthResponse() {
             const params = new URLSearchParams(window.location.search);
             const code = params.get('code');
             const state = params.get('state');
             const error = params.get('error');
             const errorDescription = params.get('error_description');
-
+        
             if (error) {
                 console.error('OAuth error:', error, errorDescription);
-                this.speak(`Login failed: ${errorDescription || error}. Please try again.`);
                 localStorage.removeItem('access_token');
                 localStorage.removeItem('expires_at');
                 localStorage.removeItem('refresh_token');
                 window.location.href = window.location.origin;
                 return;
             }
-
-            const storedState = sessionStorage.getItem('oauth_state');
+        
+            const storedState = localStorage.getItem('oauth_state');
+        
+            console.log("Returned State:", state, "Stored State:", storedState);
+        
             if (state !== storedState) {
-                console.error('State mismatch - possible CSRF attack');
-                this.speak("Login failed due to security error. Please try again.");
-                window.location.href = window.location.origin;
+                console.warn("State mismatch - possible CSRF attack or session expired. Retrying login.");
+                localStorage.removeItem('oauth_state');
+                await this.startAuthFlow();
                 return;
             }
-            sessionStorage.removeItem('oauth_state');
-
+            localStorage.removeItem('oauth_state');
+        
             if (code) {
                 try {
                     const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
@@ -486,32 +486,30 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                             grant_type: 'authorization_code'
                         })
                     });
-
+        
                     if (!response.ok) {
                         const errorData = await response.json();
                         throw new Error(errorData.error || `Token exchange failed with status ${response.status}`);
                     }
-
+        
                     const data = await response.json();
                     if (data.error) throw new Error(data.error);
-
+        
                     const expiresAt = new Date().getTime() + (data.expires_in * 1000);
                     localStorage.setItem('access_token', data.access_token);
                     localStorage.setItem('expires_at', expiresAt);
-                    
+        
                     if (data.refresh_token) {
                         localStorage.setItem('refresh_token', data.refresh_token);
                     }
-                    
+        
                     this.isAuthenticated = true;
                     document.getElementById('login-button').style.display = 'none';
-
-                    // Redirect back to main page
-                    const redirectUrl = sessionStorage.getItem('postAuthRedirect') || window.location.origin;
+        
+                    const redirectUrl = localStorage.getItem('postAuthRedirect') || window.location.origin;
                     window.location.href = redirectUrl;
                 } catch (error) {
                     console.error('Token exchange failed:', error);
-                    this.speak("Login failed. Please try again.");
                     localStorage.removeItem('access_token');
                     localStorage.removeItem('expires_at');
                     localStorage.removeItem('refresh_token');
@@ -519,6 +517,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 }
             }
         }
+        
 
         // Network and API Functions
         checkRateLimit() {
