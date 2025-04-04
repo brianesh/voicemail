@@ -40,29 +40,30 @@
   document.addEventListener('DOMContentLoaded', async () => {
     // Configuration - should match your OAuth provider settings
     const config = {
-  clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-  tokenEndpoint: 'https://oauth2.googleapis.com/token',
-  defaultSuccessRedirect: 'https://mail.google.com',
-  loginPage: 'https://accounts.google.com/o/oauth2/v2/auth/oauthchooseaccount?response_type=code&client_id=629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com&redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Foauth-callback&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.readonly%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.modify%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.send&state=193426152489715648&code_challenge=GSlRtML13MGugCkcj6vvOXshY8Vbi8AVtSBmOAyKhe4&code_challenge_method=S256&access_type=offline&prompt=consent&service=lso&o2v=2&ddm=1&flowName=GeneralOAuthFlow'
-};
-
+      clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
+      tokenEndpoint: 'https://oauth2.googleapis.com/token',
+      defaultSuccessRedirect: 'https://mail.google.com',
+      loginPage: 'https://accounts.google.com/o/oauth2/v2/auth?' + 
+        'response_type=code&' +
+        'client_id=629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com&' +
+        'redirect_uri=http://localhost:8080/oauth-callback&' +
+        'scope=https://www.googleapis.com/auth/gmail.readonly%20' +
+        'https://www.googleapis.com/auth/gmail.modify%20' +
+        'https://www.googleapis.com/auth/gmail.send&' +
+        'access_type=offline&prompt=consent'
+    };
 
     // DOM elements
     const authStatus = document.getElementById('auth-status');
 
     try {
-      // 1. Extract and validate parameters
+      // 1. Extract parameters
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code');
-      const state = params.get('state');
       const error = params.get('error');
 
       // Debugging output
-      console.debug('OAuth Callback Parameters:', { code, state, error });
-      console.debug('Session Storage:', {
-        oauth_state: sessionStorage.getItem('oauth_state'),
-        pkce_verifier: sessionStorage.getItem('pkce_verifier')
-      });
+      console.debug('OAuth Callback Parameters:', { code, error });
 
       // 2. Handle OAuth errors
       if (error) {
@@ -72,21 +73,11 @@
         return;
       }
 
-      // 3. Validate state parameter (critical security check)
-      const savedState = sessionStorage.getItem('oauth_state');
-      if (!state || !savedState || state !== savedState) {
-        console.error('State Mismatch:', { received: state, expected: savedState });
-        showError('Security Error', 'Invalid session state. Possible CSRF attempt or expired session.');
-        return;
+      if (!code) {
+        throw new Error('No authorization code received');
       }
 
-      // 4. Verify PKCE code verifier exists
-      const verifier = sessionStorage.getItem('pkce_verifier');
-      if (!verifier) {
-        throw new Error('Missing PKCE verifier. Possible page reload during authentication.');
-      }
-
-      // 5. Exchange authorization code for tokens
+      // 3. Exchange authorization code for tokens
       const response = await fetch(config.tokenEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -94,8 +85,7 @@
           code,
           client_id: config.clientId,
           redirect_uri: window.location.origin + window.location.pathname,
-          grant_type: 'authorization_code',
-          code_verifier: verifier
+          grant_type: 'authorization_code'
         })
       });
 
@@ -109,32 +99,19 @@
       const tokens = await response.json();
       console.debug('Token Response:', tokens);
 
-      // 6. Handle tokens securely
+      // 4. Handle tokens
       if (!tokens.access_token) {
         throw new Error('No access token received in response');
       }
 
-      // Store access token temporarily (consider HttpOnly cookies for production)
-      sessionStorage.setItem('gmail_access_token', tokens.access_token);
-      
-      // Send refresh token to backend for secure storage
+      // Store tokens in localStorage (for demo purposes)
+      localStorage.setItem('gmail_access_token', tokens.access_token);
       if (tokens.refresh_token) {
-        try {
-          await fetch('/api/store-refresh-token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: tokens.refresh_token })
-          });
-        } catch (err) {
-          console.warn('Failed to store refresh token:', err);
-          // Continue without failing - access token is still valid
-        }
+        localStorage.setItem('gmail_refresh_token', tokens.refresh_token);
       }
+      localStorage.setItem('gmail_token_expires', Date.now() + (tokens.expires_in * 1000));
 
-      // 7. Cleanup and redirect
-      sessionStorage.removeItem('oauth_state');
-      sessionStorage.removeItem('pkce_verifier');
-      
+      // 5. Redirect to success page
       showSuccess('Authentication Successful', 'Redirecting to your account...');
       setTimeout(() => {
         window.location.href = config.defaultSuccessRedirect;
@@ -144,7 +121,6 @@
       console.error('Authentication Process Failed:', err);
       showError('Authentication Error', err.message);
     } finally {
-      // Final cleanup
       document.getElementById('auth-status').classList.remove('loading');
     }
 
