@@ -71,7 +71,7 @@
         
         // Redirect handling
         setTimeout(() => {
-          const gmailUrl = new URL('https://mail.google.com/mail/u/0/');
+          const gmailUrl = new URL('https://mail.google.com/mail/u/0/?auth_success=true');
           gmailUrl.searchParams.set('auth_success', 'true');
           
           if (pendingCommand) {
