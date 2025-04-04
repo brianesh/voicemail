@@ -443,42 +443,36 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 .replace(/\//g, '_')
                 .replace(/=+$/, '');
         }
-        
         async handleOAuthResponse() {
             const params = new URLSearchParams(window.location.search);
             const code = params.get('code');
-            const state = params.get('state');
-            const error = params.get('error');
-            const errorDescription = params.get('error_description');
+            const returnedState = params.get('state');
+            const storedState = localStorage.getItem('oauth_state');
         
-            if (error) {
-                console.error('OAuth error:', error, errorDescription);
-                localStorage.removeItem('access_token');
-                localStorage.removeItem('expires_at');
-                localStorage.removeItem('refresh_token');
-                window.location.href = window.location.origin;
+            console.log("🟢 Returned State:", returnedState);
+            console.log("🟠 Stored State:", storedState);
+        
+            if (!storedState) {
+                console.warn("⚠️ No stored state found! Possible page refresh before OAuth response.");
+                await this.startAuthFlow();  // Restart authentication flow
                 return;
             }
         
-            const storedState = localStorage.getItem('oauth_state');
-        
-            console.log("Returned State:", state, "Stored State:", storedState);
-        
-            if (state !== storedState) {
-                console.warn("State mismatch - possible CSRF attack or session expired. Retrying login.");
+            if (returnedState !== storedState) {
+                console.error("❌ State Mismatch Detected!");
                 localStorage.removeItem('oauth_state');
+                alert("Session expired or mismatch occurred. Restarting authentication...");
                 await this.startAuthFlow();
                 return;
             }
-            localStorage.removeItem('oauth_state');
+        
+            localStorage.removeItem('oauth_state');  // Clean up
         
             if (code) {
                 try {
                     const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded'
-                        },
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: new URLSearchParams({
                             code: code,
                             client_id: this.OAUTH_CONFIG.clientId,
@@ -488,16 +482,14 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     });
         
                     if (!response.ok) {
-                        const errorData = await response.json();
-                        throw new Error(errorData.error || `Token exchange failed with status ${response.status}`);
+                        throw new Error(`Token exchange failed: ${response.status}`);
                     }
         
                     const data = await response.json();
                     if (data.error) throw new Error(data.error);
         
-                    const expiresAt = new Date().getTime() + (data.expires_in * 1000);
                     localStorage.setItem('access_token', data.access_token);
-                    localStorage.setItem('expires_at', expiresAt);
+                    localStorage.setItem('expires_at', Date.now() + (data.expires_in * 1000));
         
                     if (data.refresh_token) {
                         localStorage.setItem('refresh_token', data.refresh_token);
@@ -505,18 +497,16 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         
                     this.isAuthenticated = true;
                     document.getElementById('login-button').style.display = 'none';
-        
-                    const redirectUrl = localStorage.getItem('postAuthRedirect') || window.location.origin;
-                    window.location.href = redirectUrl;
+                    window.location.href = localStorage.getItem('postAuthRedirect') || window.location.origin;
                 } catch (error) {
-                    console.error('Token exchange failed:', error);
+                    console.error('❌ Token exchange failed:', error);
                     localStorage.removeItem('access_token');
                     localStorage.removeItem('expires_at');
                     localStorage.removeItem('refresh_token');
                     window.location.href = window.location.origin;
                 }
             }
-        }
+        }        
         
 
         // Network and API Functions
