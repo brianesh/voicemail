@@ -408,13 +408,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             // Generate a secure random state
             const state = crypto.getRandomValues(new Uint32Array(2)).join('');
             const verifier = this.generateCodeVerifier();
-        
-            // Store BOTH in localStorage before redirecting
+            
+            // Store BOTH in localStorage (persists across page reloads)
             localStorage.setItem('oauth_state', state);
             localStorage.setItem('pkce_verifier', verifier);
-        
-            console.log("✅ Stored State Before Redirect:", localStorage.getItem('oauth_state')); // Debugging
-        
+            
+            console.log("🔵 Stored State:", state);  // Debug logging
+            
             // Build the auth URL
             const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
             authUrl.searchParams.append('response_type', 'code');
@@ -426,19 +426,31 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             authUrl.searchParams.append('code_challenge_method', 'S256');
             authUrl.searchParams.append('access_type', 'offline');
             authUrl.searchParams.append('prompt', 'consent');
-        
+            
             // Store current location for post-auth redirect
             if (!window.location.pathname.includes('oauth-callback')) {
                 localStorage.setItem('postAuthRedirect', window.location.href);
             }
-        
-            // Ensure state is stored before redirecting
-            setTimeout(() => {
-                console.log("🔁 Redirecting to:", authUrl.toString());
-                window.location.href = authUrl.toString();
-            }, 100);
+            
+            // Redirect to auth provider
+            window.location.href = authUrl.toString();
         }
         
+        generateCodeVerifier() {
+            const array = new Uint8Array(32);
+            crypto.getRandomValues(array);
+            return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        
+        async generateCodeChallenge(verifier) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(verifier);
+            const digest = await crypto.subtle.digest('SHA-256', data);
+            return btoa(String.fromCharCode(...new Uint8Array(digest)))
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=+$/, '');
+        }
 
         async handleOAuthResponse() {
             const params = new URLSearchParams(window.location.search);
@@ -562,7 +574,8 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 localStorage.removeItem('pkce_verifier');
                 await this.startAuthFlow();
             }
-        }        
+        }
+        
 
         // Network and API Functions
         checkRateLimit() {
