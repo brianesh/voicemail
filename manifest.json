@@ -3,22 +3,12 @@
   "name": "Voice Controlled Gmail Assistant",
   "version": "1.0",
   "description": "Control Gmail using voice commands",
-  "permissions": [
-    "identity",
-    "storage",
-    "cookies"
-  ],
-  "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
-  },
-  "host_permissions": [
-    "https://mail.google.com/*",
-    "https://accounts.google.com/*"
-  ],
+  "permissions": ["activeTab", "tabs", "storage", "webNavigation", "scripting"],
+  "host_permissions": ["https://mail.google.com/*"],
   "background": {
     "service_worker": "background/background.js"
   },
-  "oauth2": {
+ "oauth2": {
     "client_id": "629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/gmail.readonly",
@@ -31,8 +21,7 @@
       "16": "assets/icons/icon16.png",
       "48": "assets/icons/icon48.png",
       "128": "assets/icons/icon128.png"
-    },
-    "default_title": "Voice Controlled Gmail Assistant"
+    }
   },
   "content_scripts": [
     {
@@ -42,12 +31,7 @@
         "content/content.js",
         "content/wakeWordDetector.js"
       ],
-      "run_at": "document_idle",
-      "all_frames": true
+      "run_at": "document_idle"
     }
-  ],
-  "web_accessible_resources": [{
-    "resources": ["oauth-callback.html"],
-    "matches": ["https://accounts.google.com/*"]
-  }]
+  ]
 }

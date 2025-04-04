@@ -178,17 +178,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 window.removeEventListener('online', onlineHandler);
                 window.removeEventListener('offline', offlineHandler);
             });
-
-            // Add message listener for token injection confirmation
-window.addEventListener('message', (event) => {
-    if (event.data.type === 'oauth_token_injected') {
-        if (event.data.success) {
-            console.log('Token successfully injected into Gmail');
-        } else {
-            console.error('Failed to inject token into Gmail');
-        }
-    }
-});
         }
 
         initRecognition() {
@@ -352,153 +341,73 @@ window.addEventListener('message', (event) => {
         }
 
         // Authentication Functions
-       // Updated checkAuthStatus method
-       async checkAuthStatus() {
-        try {
-            // 1. First check Chrome extension identity
-            if (chrome.identity) {
-                try {
-                    const token = await new Promise((resolve) => {
-                        chrome.identity.getAuthToken({ interactive: false }, resolve);
-                    });
-                    
-                    if (token) {
-                        this.isAuthenticated = true;
-                        document.getElementById('login-button').style.display = 'none';
-                        
-                        // Store in localStorage for consistency
-                        localStorage.setItem('access_token', token);
-                        localStorage.setItem('expires_at', Date.now() + 3600 * 1000);
-                        return true;
-                    }
-                } catch (error) {
-                    console.log('Chrome identity silent auth failed, falling back:', error);
-                }
-            }
-    
-            // 2. Check localStorage (for non-extension or fallback)
-            const token = localStorage.getItem('access_token');
-            const expiresAt = localStorage.getItem('expires_at');
+        checkAuthStatus() {
+            // First check sessionStorage (for cross-tab auth)
+            let token = sessionStorage.getItem('gmail_access_token');
+            let expiresAt = sessionStorage.getItem('gmail_expires_at');
             
-            if (token && expiresAt && Date.now() < parseInt(expiresAt)) {
+            // Fallback to localStorage
+            if (!token) {
+                token = localStorage.getItem('access_token');
+                expiresAt = localStorage.getItem('expires_at');
+            }
+        
+            const isExpired = expiresAt && (Date.now() > parseInt(expiresAt));
+            
+            if (token && !isExpired) {
                 this.isAuthenticated = true;
                 document.getElementById('login-button').style.display = 'none';
-                return true;
-            }
-            
-            // 3. If no valid token found
-            this.isAuthenticated = false;
-            document.getElementById('login-button').style.display = 'block';
-            return false;
-        } catch (error) {
-            console.error('Auth check failed:', error);
-            this.isAuthenticated = false;
-            document.getElementById('login-button').style.display = 'block';
-            return false;
-        }
-    }
-
-    async injectTokenToGmail(token) {
-        // Store token in localStorage for our extension's use
-        localStorage.setItem('access_token', token);
-        localStorage.setItem('expires_at', Date.now() + 3600 * 1000);
-        
-        // For Chrome extension context, we need to inject the token into Gmail's page
-        if (chrome.identity && window.location.hostname === 'mail.google.com') {
-            try {
-                // Create a hidden iframe to set the authentication cookie
-                const iframe = document.createElement('iframe');
-                iframe.src = `https://accounts.google.com/o/oauth2/auth?client_id=${this.OAUTH_CONFIG.clientId}&response_type=token&scope=${encodeURIComponent(this.OAUTH_CONFIG.scope)}`;
-                iframe.style.display = 'none';
-                document.body.appendChild(iframe);
                 
-                // Wait for the iframe to load
-                await new Promise(resolve => {
-                    iframe.onload = resolve;
-                });
-                
-                // Execute script in the iframe's context to set the token
-                const script = `
-                    try {
-                        document.cookie = 'oauth_token=${token}; path=/; domain=.google.com; secure';
-                        window.parent.postMessage({ type: 'oauth_token_injected', success: true }, '*');
-                    } catch (e) {
-                        window.parent.postMessage({ type: 'oauth_token_injected', success: false }, '*');
-                    }
-                `;
-                
-                iframe.contentWindow.postMessage({ script }, '*');
-                
-                // Clean up
-                setTimeout(() => {
-                    document.body.removeChild(iframe);
-                }, 1000);
-                
-                this.isAuthenticated = true;
-                document.getElementById('login-button').style.display = 'none';
-                return true;
-            } catch (error) {
-                console.error('Token injection failed:', error);
-                return false;
-            }
-        }
-        
-        this.isAuthenticated = true;
-        document.getElementById('login-button').style.display = 'none';
-        return true;
-    }
-        
-        
-async startAuthFlow() {
-    // First try Chrome Identity API if available
-    if (chrome.identity) {
-        try {
-            const token = await new Promise((resolve, reject) => {
-                chrome.identity.getAuthToken(
-                    { interactive: true }, // Force showing auth UI if needed
-                    (token) => {
-                        if (chrome.runtime.lastError) {
-                            reject(chrome.runtime.lastError);
-                        } else {
-                            resolve(token);
-                        }
-                    }
-                );
-            });
-            
-            if (token) {
-                // Store token in localStorage for consistency
+                // Move token to localStorage for persistence
                 localStorage.setItem('access_token', token);
-                // Chrome tokens don't provide expires_at, but they auto-refresh
-                localStorage.setItem('expires_at', Date.now() + 3600 * 1000);
-                
-                this.isAuthenticated = true;
-                document.getElementById('login-button').style.display = 'none';
+                localStorage.setItem('expires_at', expiresAt);
                 return true;
             }
-        } catch (error) {
-            console.error('Chrome identity auth failed:', error);
-            // Fall through to regular OAuth flow
+            
+            // Clear invalid tokens
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('expires_at');
+            sessionStorage.removeItem('gmail_access_token');
+            sessionStorage.removeItem('gmail_expires_at');
+            
+            this.isAuthenticated = false;
+            document.getElementById('login-button').style.display = 'block';
+            return false;
         }
-    }
-    
-    // Fallback to regular OAuth flow for non-extension contexts
-    const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
-    authUrl.searchParams.append('response_type', 'token');
-    authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
-    authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
-    authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
-    authUrl.searchParams.append('prompt', 'consent');
-    
-    // Store current state before redirect
-    sessionStorage.setItem('preAuthUrl', window.location.href);
-    if (this.pendingCommand) {
-        sessionStorage.setItem('pendingCommand', JSON.stringify(this.pendingCommand));
-    }
-    
-    window.location.href = authUrl.toString();
-}
-
+        
+        async ensureValidToken() {
+            if (this.checkAuthStatus()) {
+                return localStorage.getItem('access_token');
+            }
+            
+            // Store the current command as pending
+            if (this.currentCommand) {
+                this.pendingCommand = this.currentCommand;
+            }
+            
+            // Start auth flow and throw error to stop current operation
+            this.startAuthFlow();
+            throw new Error("Redirecting to login...");
+        }
+        
+        
+        async startAuthFlow() {
+            // Store the current URL and any pending command
+            sessionStorage.setItem('preAuthUrl', window.location.href);
+            if (this.pendingCommand) {
+                sessionStorage.setItem('pendingCommand', JSON.stringify(this.pendingCommand));
+            }
+            
+            const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
+            authUrl.searchParams.append('response_type', 'token');
+            authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
+            authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
+            authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
+            authUrl.searchParams.append('prompt', 'consent');
+            // Removed: authUrl.searchParams.append('access_type', 'offline');
+            
+            window.location.href = authUrl.toString();
+        }
         async handleOAuthResponse() {
             const hashParams = new URLSearchParams(window.location.hash.substring(1));
             
