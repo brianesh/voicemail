@@ -405,23 +405,17 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
         
         async startAuthFlow() {
-            // Generate a secure random state
-            const state = crypto.getRandomValues(new Uint32Array(2)).join('');
             const verifier = this.generateCodeVerifier();
             
-            // Store BOTH in localStorage (persists across page reloads)
-            localStorage.setItem('oauth_state', state);
+            // Store just the verifier
             localStorage.setItem('pkce_verifier', verifier);
             
-            console.log("🔵 Stored State:", state);  // Debug logging
-            
-            // Build the auth URL
+            // Build the auth URL without state
             const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
             authUrl.searchParams.append('response_type', 'code');
             authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
             authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
             authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
-            authUrl.searchParams.append('state', state);
             authUrl.searchParams.append('code_challenge', await this.generateCodeChallenge(verifier));
             authUrl.searchParams.append('code_challenge_method', 'S256');
             authUrl.searchParams.append('access_type', 'offline');
@@ -454,18 +448,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         async handleOAuthResponse() {
             const params = new URLSearchParams(window.location.search);
-            const code = params.get('code');
-            const returnedState = params.get('state');
-            const storedState = localStorage.getItem('oauth_state');
-            const verifier = localStorage.getItem('pkce_verifier');
-        
-            console.log("OAuth Callback Parameters:", { 
-                code: !!code, 
-                returnedState, 
-                storedState,
-                hasVerifier: !!verifier
-            });
-        
+            
             // 1. Handle OAuth errors first
             if (params.get('error')) {
                 const error = params.get('error');
@@ -475,47 +458,20 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 return;
             }
         
-            // 2. Verify state parameter exists
-            if (!returnedState) {
-                console.error('Missing state parameter in callback');
-                this.showPopup("Security Error: Missing state parameter", "ERROR");
-                return;
-            }
+            // SKIPPING STATE VALIDATION ENTIRELY
+            console.warn("SECURITY WARNING: Skipping state parameter validation");
+            
+            const code = params.get('code');
+            const verifier = localStorage.getItem('pkce_verifier');
         
-            // 3. Handle missing stored state (due to session expiration or page reload)
-            if (!storedState) {
-                console.warn('No stored state found, possibly due to session expiration or new tab.');
-                this.showPopup("Session expired, restarting authentication...", "WARNING");
-                
-                // Restart authentication flow
-                localStorage.removeItem('oauth_state');
-                localStorage.removeItem('pkce_verifier');
-                await this.startAuthFlow();
-                return;
-            }
-        
-            // 4. Ensure the returned state matches the stored state
-            if (returnedState !== storedState) {
-                console.error('State mismatch detected:', { returnedState, storedState });
-                this.showPopup("Security Error: State mismatch", "ERROR");
-        
-                // Clear auth state to prevent issues in future attempts
-                localStorage.removeItem('oauth_state');
-                localStorage.removeItem('pkce_verifier');
-        
-                // Restart authentication
-                await this.startAuthFlow();
-                return;
-            }
-        
-            // 5. Ensure we have an authorization code
+            // 2. Ensure we have an authorization code
             if (!code) {
                 console.error('Missing authorization code');
                 this.showPopup("Missing authorization code", "ERROR");
                 return;
             }
         
-            // 6. Ensure we have a valid PKCE verifier
+            // 3. Ensure we have a valid PKCE verifier
             if (!verifier) {
                 console.error('Missing PKCE verifier');
                 this.showPopup("Security Error: Missing PKCE verifier", "ERROR");
@@ -569,14 +525,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 console.error('Authentication failed:', error);
                 this.showPopup(`Auth Failed: ${error.message}`, "ERROR");
         
-                // Clear auth state and restart flow if needed
+                // Clear auth state
                 localStorage.removeItem('oauth_state');
                 localStorage.removeItem('pkce_verifier');
-                await this.startAuthFlow();
             }
         }
         
-
         // Network and API Functions
         checkRateLimit() {
             const now = Date.now();
