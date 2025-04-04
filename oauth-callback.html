@@ -1,88 +1,67 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>OAuth Callback Handler</title>
+  <title>OAuth Callback</title>
   <style>
-    /* Your existing styles */
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    .success {
+      color: green;
+    }
+    .error {
+      color: red;
+    }
   </style>
 </head>
 <body>
-  <div id="auth-status" class="loading">
-    <h2>Authenticating...</h2>
-    <p>Please wait while we complete your authentication.</p>
+  <div id="auth-status">
+    <h2>Processing authentication...</h2>
   </div>
 
   <script>
-  document.addEventListener('DOMContentLoaded', async () => {
-    const config = {
-      clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-      tokenEndpoint: 'https://oauth2.googleapis.com/token',
-      defaultSuccessRedirect: 'https://mail.google.com',
-      loginPage: 'https://accounts.google.com/o/oauth2/v2/auth?' + 
-        'response_type=token&' +  // Changed to 'token' for implicit flow
-        'client_id=629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com&' +
-        'redirect_uri=http://localhost:8080/oauth-callback&' +
-        'scope=https://www.googleapis.com/auth/gmail.readonly%20' +
-        'https://www.googleapis.com/auth/gmail.modify%20' +
-        'https://www.googleapis.com/auth/gmail.send&' +
-        'access_type=offline&prompt=consent'
-    };
-
-    const authStatus = document.getElementById('auth-status');
-
-    try {
-      // Check for token in URL fragment (implicit flow)
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      const accessToken = hashParams.get('access_token');
-      const error = hashParams.get('error');
-
-      if (error) {
-        const errorDesc = hashParams.get('error_description') || 'No description provided';
-        console.error('OAuth Error:', { error, errorDesc });
-        showError(`Authorization failed: ${error}`, errorDesc);
+    document.addEventListener('DOMContentLoaded', () => {
+      const authStatus = document.getElementById('auth-status');
+      
+      // Check for error in URL fragment (e.g., #error=...)
+      if (window.location.hash.includes('error=')) {
+        const error = new URLSearchParams(window.location.hash.substring(1)).get('error');
+        authStatus.innerHTML = `
+          <h2 class="error">Authentication Failed</h2>
+          <p>${error || 'Unknown error'}</p>
+          <button onclick="window.location.href='/'">Try Again</button>
+        `;
         return;
       }
 
-      if (!accessToken) {
-        throw new Error('No access token received');
+      // Extract token from URL fragment (e.g., #access_token=...)
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const expiresIn = hashParams.get('expires_in') || 3600;
+
+      if (accessToken) {
+        // Store token in localStorage
+        localStorage.setItem('access_token', accessToken);
+        localStorage.setItem('expires_at', Date.now() + (expiresIn * 1000));
+
+        authStatus.innerHTML = `
+          <h2 class="success">Success!</h2>
+          <p>You can now close this window or return to the app.</p>
+        `;
+        
+        // Redirect back to the main app after a short delay
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 2000);
+      } else {
+        authStatus.innerHTML = `
+          <h2 class="error">No Token Received</h2>
+          <p>Try logging in again.</p>
+        `;
       }
-
-      // Store token in localStorage
-      localStorage.setItem('gmail_access_token', accessToken);
-      
-      // Get additional token info if needed
-      const expiresIn = hashParams.get('expires_in') || '3600';
-      localStorage.setItem('gmail_token_expires', Date.now() + (parseInt(expiresIn) * 1000));
-
-      showSuccess('Authentication Successful', 'Redirecting to your account...');
-      setTimeout(() => {
-        window.location.href = config.defaultSuccessRedirect;
-      }, 1500);
-
-    } catch (err) {
-      console.error('Authentication Process Failed:', err);
-      showError('Authentication Error', err.message);
-    } finally {
-      document.getElementById('auth-status').classList.remove('loading');
-    }
-
-    function showError(title, message) {
-      authStatus.className = 'error';
-      authStatus.innerHTML = `
-        <h2>${title}</h2>
-        <p>${message}</p>
-        <button onclick="window.location.href='${config.loginPage}'">Return to Login</button>
-      `;
-    }
-
-    function showSuccess(title, message) {
-      authStatus.className = 'success';
-      authStatus.innerHTML = `
-        <h2>${title}</h2>
-        <p>${message}</p>
-      `;
-    }
-  });
+    });
   </script>
 </body>
 </html>

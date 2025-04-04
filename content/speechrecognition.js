@@ -33,12 +33,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
                 redirectUri: 'http://localhost:8080/oauth-callback',
                 scope: [
-                  'https://www.googleapis.com/auth/gmail.readonly',
-                  'https://www.googleapis.com/auth/gmail.modify',
-                  'https://www.googleapis.com/auth/gmail.send'
+                    'https://www.googleapis.com/auth/gmail.readonly',
+                    'https://www.googleapis.com/auth/gmail.modify',
+                    'https://www.googleapis.com/auth/gmail.send'
                 ].join(' '),
                 authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
-                tokenUrl: 'https://oauth2.googleapis.com/token'
+                // No tokenUrl needed for implicit flow
             };
 
             // Initialize the app
@@ -394,11 +394,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         
         async startAuthFlow() {
             const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
-            authUrl.searchParams.append('response_type', 'code');
+            authUrl.searchParams.append('response_type', 'token'); // Key change for implicit flow
             authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
             authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
             authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
-            authUrl.searchParams.append('access_type', 'offline');
             authUrl.searchParams.append('prompt', 'consent');
             
             window.location.href = authUrl.toString();
