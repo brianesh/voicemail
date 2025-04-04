@@ -424,7 +424,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.isAuthenticated = true;
             
             // Get the original URL and pending command
-            const originalUrl = sessionStorage.getItem('preAuthUrl') || 'https://mail.google.com';
+            const originalUrl = sessionStorage.getItem('preAuthUrl') || 'https://mail.google.com/mail/u/0/?auth_success=true';
             const pendingCommand = sessionStorage.getItem('pendingCommand');
             
             // Clear the stored values
