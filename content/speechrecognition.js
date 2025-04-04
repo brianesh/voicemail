@@ -32,7 +32,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.OAUTH_CONFIG = {
                 clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
                 // Remove clientSecret completely from client-side code
-                redirectUri: 'http://localhost:8080/oauth-callback', // For development
+                redirectUri: 'http://localhost:8080/oauth-callback.html', // For development
                 scope: [
                     'https://www.googleapis.com/auth/gmail.readonly',
                     'https://www.googleapis.com/auth/gmail.modify',
