@@ -32,7 +32,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.OAUTH_CONFIG = {
                 clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
                 clientSecret: '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',
-                redirectUri: 'http://localhost:8080/callback', // Must match exactly with your JSON
+                redirectUri: window.location.origin + '/oauth-callback', // Must match exactly with your JSON
                 scope: 'https://www.googleapis.com/auth/gmail.readonly ' +
                        'https://www.googleapis.com/auth/gmail.modify ' +
                        'https://www.googleapis.com/auth/gmail.send',
@@ -406,142 +406,93 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
 
         startAuthFlow() {
-            try {
-                // Generate cryptographically secure state parameter
-                const state = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint32Array(8))))
-                            .replace(/[+/=]/g, '')
-                            .substring(0, 32);
-                
-                // Store state with timestamp (5 minute expiration)
-                const stateData = {
-                    value: state,
-                    timestamp: Date.now()
-                };
-                sessionStorage.setItem('oauth_state', JSON.stringify(stateData));
-                
-                // Build authorization URL
-                const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
-                const params = {
-                    response_type: 'code',
-                    client_id: this.OAUTH_CONFIG.clientId,
-                    redirect_uri: this.OAUTH_CONFIG.redirectUri,
-                    scope: this.OAUTH_CONFIG.scope,
-                    state: state,
-                    access_type: 'offline',
-                    prompt: 'consent'
-                };
-                
-                // Add all parameters to URL
-                Object.entries(params).forEach(([key, value]) => {
-                    authUrl.searchParams.append(key, value);
-                });
-                
-                // Store where to redirect after auth
-                sessionStorage.setItem('postAuthRedirect', window.location.href);
-                
-                // Redirect to Google OAuth
-                window.location.href = authUrl.toString();
-            } catch (error) {
-                console.error('Error starting auth flow:', error);
-                this.showPopup("Failed to start authentication", "ERROR");
-                this.speak("Sorry, we couldn't start the login process. Please try again.");
-            }
-        }
+            // Generate a more robust state parameter
+            const state = crypto.getRandomValues(new Uint32Array(2)).join('');
+            sessionStorage.setItem('oauth_state', state);
+            
+            const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
+            authUrl.searchParams.append('response_type', 'code');
+            authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
+            authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
+            authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
+            authUrl.searchParams.append('state', state);
+            authUrl.searchParams.append('access_type', 'offline');
+            authUrl.searchParams.append('prompt', 'consent');
         
+            window.location.href = authUrl.toString();
+        }
+
         async handleOAuthResponse() {
-            try {
-                const params = new URLSearchParams(window.location.search);
-                const code = params.get('code');
-                const state = params.get('state');
-                const error = params.get('error');
-                
-                // Handle OAuth errors
-                if (error) {
-                    const errorDescription = params.get('error_description');
-                    console.error('OAuth error:', error, errorDescription);
-                    throw new Error(errorDescription || error);
-                }
-                
-                // Validate state parameter
-                const storedStateData = sessionStorage.getItem('oauth_state');
-                if (!storedStateData) {
-                    throw new Error('Missing state verification data');
-                }
-                
-                const { value: storedState, timestamp } = JSON.parse(storedStateData);
-                
-                // Check state match and expiration (5 minutes)
-                if (!state || state !== storedState) {
-                    throw new Error('Invalid state parameter - possible CSRF attack');
-                }
-                
-                if (Date.now() - timestamp > 300000) { // 5 minutes
-                    throw new Error('State parameter expired');
-                }
-                
-                // Clear state immediately after validation
-                sessionStorage.removeItem('oauth_state');
-                
-                // Exchange code for tokens
-                const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'Accept': 'application/json'
-                    },
-                    body: new URLSearchParams({
-                        code: code,
-                        client_id: this.OAUTH_CONFIG.clientId,
-                        client_secret: this.OAUTH_CONFIG.clientSecret,
-                        redirect_uri: this.OAUTH_CONFIG.redirectUri,
-                        grant_type: 'authorization_code'
-                    })
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error_description || 
-                                  errorData.error || 
-                                  `Token exchange failed with status ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                // Store tokens and update state
-                const expiresAt = Date.now() + (data.expires_in * 1000);
-                localStorage.setItem('access_token', data.access_token);
-                localStorage.setItem('expires_at', expiresAt.toString());
-                
-                if (data.refresh_token) {
-                    localStorage.setItem('refresh_token', data.refresh_token);
-                }
-                
-                this.isAuthenticated = true;
-                document.getElementById('login-button').style.display = 'none';
-                
-                // Redirect to original location or home
-                const redirectUrl = sessionStorage.getItem('postAuthRedirect') || window.location.origin;
-                sessionStorage.removeItem('postAuthRedirect');
-                window.location.href = redirectUrl;
-                
-            } catch (error) {
-                console.error('Authentication error:', error);
-                
-                // Clear all auth data on failure
+            const params = new URLSearchParams(window.location.search);
+            const code = params.get('code');
+            const state = params.get('state');
+            const error = params.get('error');
+            const errorDescription = params.get('error_description');
+
+            if (error) {
+                console.error('OAuth error:', error, errorDescription);
+                this.speak(`Login failed: ${errorDescription || error}. Please try again.`);
                 localStorage.removeItem('access_token');
                 localStorage.removeItem('expires_at');
                 localStorage.removeItem('refresh_token');
-                sessionStorage.removeItem('oauth_state');
-                sessionStorage.removeItem('postAuthRedirect');
-                
-                // User feedback
-                this.showPopup(`Login failed: ${error.message}`, "ERROR");
-                this.speak("Sorry, login failed. Please try again.");
-                
-                // Return to home page
-                setTimeout(() => {
+                window.location.href = window.location.origin;
+                return;
+            }
+
+            const storedState = sessionStorage.getItem('oauth_state');
+            if (state !== storedState) {
+                console.error('State mismatch - possible CSRF attack');
+                this.speak("Login failed due to security error. Please try again.");
+                window.location.href = window.location.origin;
+                return;
+            }
+            sessionStorage.removeItem('oauth_state');
+
+            if (code) {
+                try {
+                    const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: new URLSearchParams({
+                            code: code,
+                            client_id: this.OAUTH_CONFIG.clientId,
+                            redirect_uri: this.OAUTH_CONFIG.redirectUri,
+                            grant_type: 'authorization_code'
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || `Token exchange failed with status ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error);
+
+                    const expiresAt = new Date().getTime() + (data.expires_in * 1000);
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('expires_at', expiresAt);
+                    
+                    if (data.refresh_token) {
+                        localStorage.setItem('refresh_token', data.refresh_token);
+                    }
+                    
+                    this.isAuthenticated = true;
+                    document.getElementById('login-button').style.display = 'none';
+
+                    // Redirect back to main page
+                    const redirectUrl = sessionStorage.getItem('postAuthRedirect') || window.location.origin;
+                    window.location.href = redirectUrl;
+                } catch (error) {
+                    console.error('Token exchange failed:', error);
+                    this.speak("Login failed. Please try again.");
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('expires_at');
+                    localStorage.removeItem('refresh_token');
                     window.location.href = window.location.origin;
-                }, 3000);
+                }
             }
         }
 
