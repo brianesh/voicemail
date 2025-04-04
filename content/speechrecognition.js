@@ -405,55 +405,59 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
 
         async handleOAuthResponse() {
-    const params = new URLSearchParams(window.location.search);
-    
-    if (params.get('error')) {
-        const error = params.get('error');
-        console.error('OAuth Error:', error);
-        this.showPopup(`Auth Error: ${error}`, "ERROR");
-        return;
-    }
-    
-    const code = params.get('code');
-    if (!code) {
-        console.error('Missing authorization code');
-        return;
-    }
-    
-    try {
-        const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-                code,
-                client_id: this.OAUTH_CONFIG.clientId,
-                redirect_uri: this.OAUTH_CONFIG.redirectUri,
-                grant_type: 'authorization_code'
-            })
-        });
-        
-        if (!response.ok) throw new Error('Token exchange failed');
-        
-        const tokens = await response.json();
-        
-        localStorage.setItem('access_token', tokens.access_token);
-        localStorage.setItem('expires_at', Date.now() + (tokens.expires_in * 1000));
-        
-        if (tokens.refresh_token) {
-            localStorage.setItem('refresh_token', tokens.refresh_token);
+            const params = new URLSearchParams(window.location.search);
+            
+            if (params.get('error')) {
+                const error = params.get('error');
+                console.error('OAuth Error:', error);
+                this.showPopup(`Auth Error: ${error}`, "ERROR");
+                return;
+            }
+            
+            const code = params.get('code');
+            if (!code) {
+                console.error('Missing authorization code');
+                this.showPopup("Missing authorization code", "ERROR");
+                return;
+            }
+            
+            try {
+                const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        code,
+                        client_id: this.OAUTH_CONFIG.clientId,
+                        redirect_uri: this.OAUTH_CONFIG.redirectUri,
+                        grant_type: 'authorization_code'
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Token exchange failed');
+                }
+                
+                const tokens = await response.json();
+                
+                localStorage.setItem('access_token', tokens.access_token);
+                localStorage.setItem('expires_at', Date.now() + (tokens.expires_in * 1000));
+                
+                if (tokens.refresh_token) {
+                    localStorage.setItem('refresh_token', tokens.refresh_token);
+                }
+                
+                this.isAuthenticated = true;
+                document.getElementById('login-button').style.display = 'none';
+                
+                // Redirect to clean URL
+                window.location.href = window.location.origin;
+                
+            } catch (error) {
+                console.error('Authentication failed:', error);
+                this.showPopup(`Auth Failed: ${error.message}`, "ERROR");
+            }
         }
-        
-        this.isAuthenticated = true;
-        document.getElementById('login-button').style.display = 'none';
-        
-        // Redirect to clean URL
-        window.location.href = window.location.origin;
-        
-    } catch (error) {
-        console.error('Authentication failed:', error);
-        this.showPopup('Authentication failed', "ERROR");
-    }
-}
         
         // Network and API Functions
         checkRateLimit() {
