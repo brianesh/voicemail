@@ -3,22 +3,10 @@
 <head>
   <title>OAuth Callback</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      padding: 20px;
-    }
-    .success {
-      color: green;
-    }
-    .error {
-      color: red;
-    }
-    button {
-      padding: 8px 16px;
-      margin-top: 10px;
-      cursor: pointer;
-    }
+    body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+    .success { color: green; }
+    .error { color: red; }
+    button { padding: 8px 16px; margin-top: 10px; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -30,84 +18,52 @@
     document.addEventListener('DOMContentLoaded', () => {
       const authStatus = document.getElementById('auth-status');
       
-      // Function to parse hash parameters
-      function getHashParams() {
-        const hash = window.location.hash.substring(1);
-        return new URLSearchParams(hash);
-      }
-
-      const hashParams = getHashParams();
+      // Get hash parameters
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
       
-      // Check for error first
       if (hashParams.get('error')) {
-        const error = hashParams.get('error');
-        const errorDesc = hashParams.get('error_description') || '';
-        
-        authStatus.innerHTML = `
-          <h2 class="error">Authentication Failed</h2>
-          <p>${error || 'Unknown error'}</p>
-          ${errorDesc ? `<p>${errorDesc}</p>` : ''}
-          <button onclick="retryAuth()">Try Again</button>
-        `;
+        showError(hashParams.get('error'), hashParams.get('error_description'));
         return;
       }
 
-      // Process successful authentication
       const accessToken = hashParams.get('access_token');
-      const expiresIn = parseInt(hashParams.get('expires_in') || 3600);
-      const tokenType = hashParams.get('token_type') || 'Bearer';
+      if (!accessToken) {
+        showError('No access token received');
+        return;
+      }
 
-      if (accessToken) {
-        // Store token in localStorage
-        localStorage.setItem('access_token', accessToken);
-        localStorage.setItem('expires_at', Date.now() + (expiresIn * 1000));
-        localStorage.setItem('token_type', tokenType);
-
-        // Get any pending command from sessionStorage
-        const pendingCommand = sessionStorage.getItem('pendingCommand');
-        
-        // Prepare the redirect URL
-        let redirectUrl = 'https://mail.google.com/mail/u/0/';
-        
-        // Add parameters if needed
-        const urlParams = new URLSearchParams();
-        urlParams.set('auth_success', 'true');
-        
-        if (pendingCommand) {
-          urlParams.set('pending_command', 'true');
-        }
-        
-        redirectUrl += '?' + urlParams.toString();
-
-        authStatus.innerHTML = `
-          <h2 class="success">Authentication Successful!</h2>
-          <p>Redirecting to Gmail...</p>
-        `;
-
-        // Redirect after a short delay
-        setTimeout(() => {
-          window.location.href = redirectUrl;
-        }, 1500);
+      // Store token in sessionStorage (which can be accessed by the parent)
+      sessionStorage.setItem('gmail_access_token', accessToken);
+      sessionStorage.setItem('gmail_expires_at', Date.now() + ((parseInt(hashParams.get('expires_in')) || 3600) * 1000));
+      
+      // Close this window and notify the opener
+      if (window.opener) {
+        window.opener.postMessage({
+          type: 'oauth_callback',
+          success: true,
+          token: accessToken,
+          expiresIn: parseInt(hashParams.get('expires_in')) || 3600
+        }, window.location.origin);
+        window.close();
       } else {
-        authStatus.innerHTML = `
-          <h2 class="error">Authentication Failed</h2>
-          <p>No access token received</p>
-          <button onclick="retryAuth()">Try Again</button>
-        `;
+        // For tabs (not popups)
+        window.location.href = buildRedirectUrl();
       }
     });
 
-    function retryAuth() {
-      // Clear stored tokens
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('expires_at');
-      localStorage.removeItem('token_type');
-      
-      // Get the original auth URL from sessionStorage or use a default
-      const authUrl = sessionStorage.getItem('authUrl') || 
-                     'http://localhost:8080/auth';
-      
-      window.location.href = authUrl;
+    function buildRedirectUrl() {
+      const url = new URL('https://mail.google.com/mail/u/0/');
+      url.searchParams.set('auth_success', 'true');
+      return url.toString();
+    }
+
+    function showError(error, description) {
+      document.getElementById('auth-status').innerHTML = `
+        <h2 class="error">Authentication Failed</h2>
+        <p>${error || 'Unknown error'}</p>
+        ${description ? `<p>${description}</p>` : ''}
+        <button onclick="window.location.href='/'">Try Again</button>
+      `;
     }
   </script>
 </body>

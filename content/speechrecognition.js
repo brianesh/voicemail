@@ -342,24 +342,33 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         // Authentication Functions
         checkAuthStatus() {
-            const token = localStorage.getItem('access_token');
-            const expiresAt = localStorage.getItem('expires_at');
-            const isExpired = expiresAt && (Date.now() > parseInt(expiresAt));
+            // First check sessionStorage (for cross-tab auth)
+            let token = sessionStorage.getItem('gmail_access_token');
+            let expiresAt = sessionStorage.getItem('gmail_expires_at');
             
-            // Clear invalid tokens
-            if ((token && isExpired) || (token && !expiresAt)) {
-                localStorage.removeItem('access_token');
-                localStorage.removeItem('expires_at');
-                this.isAuthenticated = false;
-                document.getElementById('login-button').style.display = 'block';
-                return false;
+            // Fallback to localStorage
+            if (!token) {
+                token = localStorage.getItem('access_token');
+                expiresAt = localStorage.getItem('expires_at');
             }
+        
+            const isExpired = expiresAt && (Date.now() > parseInt(expiresAt));
             
             if (token && !isExpired) {
                 this.isAuthenticated = true;
                 document.getElementById('login-button').style.display = 'none';
+                
+                // Move token to localStorage for persistence
+                localStorage.setItem('access_token', token);
+                localStorage.setItem('expires_at', expiresAt);
                 return true;
             }
+            
+            // Clear invalid tokens
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('expires_at');
+            sessionStorage.removeItem('gmail_access_token');
+            sessionStorage.removeItem('gmail_expires_at');
             
             this.isAuthenticated = false;
             document.getElementById('login-button').style.display = 'block';
