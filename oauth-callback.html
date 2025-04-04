@@ -3,31 +3,7 @@
 <head>
   <title>OAuth Callback Handler</title>
   <style>
-    #auth-status {
-      padding: 20px;
-      margin: 20px auto;
-      max-width: 600px;
-      border-radius: 5px;
-    }
-    .loading {
-      background: #f0f7ff;
-      border: 1px solid #cce0ff;
-    }
-    .error {
-      background: #fff0f0;
-      border: 1px solid #ffcccc;
-      color: #d8000c;
-    }
-    .success {
-      background: #f0fff0;
-      border: 1px solid #ccffcc;
-      color: #008000;
-    }
-    button {
-      padding: 8px 16px;
-      margin-top: 10px;
-      cursor: pointer;
-    }
+    /* Your existing styles */
   </style>
 </head>
 <body>
@@ -38,13 +14,12 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', async () => {
-    // Configuration - should match your OAuth provider settings
     const config = {
       clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
       tokenEndpoint: 'https://oauth2.googleapis.com/token',
       defaultSuccessRedirect: 'https://mail.google.com',
       loginPage: 'https://accounts.google.com/o/oauth2/v2/auth?' + 
-        'response_type=code&' +
+        'response_type=token&' +  // Changed to 'token' for implicit flow
         'client_id=629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com&' +
         'redirect_uri=http://localhost:8080/oauth-callback&' +
         'scope=https://www.googleapis.com/auth/gmail.readonly%20' +
@@ -53,65 +28,32 @@
         'access_type=offline&prompt=consent'
     };
 
-    // DOM elements
     const authStatus = document.getElementById('auth-status');
 
     try {
-      // 1. Extract parameters
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
-      const error = params.get('error');
+      // Check for token in URL fragment (implicit flow)
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const error = hashParams.get('error');
 
-      // Debugging output
-      console.debug('OAuth Callback Parameters:', { code, error });
-
-      // 2. Handle OAuth errors
       if (error) {
-        const errorDesc = params.get('error_description') || 'No description provided';
+        const errorDesc = hashParams.get('error_description') || 'No description provided';
         console.error('OAuth Error:', { error, errorDesc });
         showError(`Authorization failed: ${error}`, errorDesc);
         return;
       }
 
-      if (!code) {
-        throw new Error('No authorization code received');
+      if (!accessToken) {
+        throw new Error('No access token received');
       }
 
-      // 3. Exchange authorization code for tokens
-      const response = await fetch(config.tokenEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          code,
-          client_id: config.clientId,
-          redirect_uri: window.location.origin + window.location.pathname,
-          grant_type: 'authorization_code'
-        })
-      });
+      // Store token in localStorage
+      localStorage.setItem('gmail_access_token', accessToken);
+      
+      // Get additional token info if needed
+      const expiresIn = hashParams.get('expires_in') || '3600';
+      localStorage.setItem('gmail_token_expires', Date.now() + (parseInt(expiresIn) * 1000));
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Token Exchange Error:', errorData);
-        showError('Token Exchange Failed', errorData.error_description || 'Failed to obtain access token');
-        return;
-      }
-
-      const tokens = await response.json();
-      console.debug('Token Response:', tokens);
-
-      // 4. Handle tokens
-      if (!tokens.access_token) {
-        throw new Error('No access token received in response');
-      }
-
-      // Store tokens in localStorage (for demo purposes)
-      localStorage.setItem('gmail_access_token', tokens.access_token);
-      if (tokens.refresh_token) {
-        localStorage.setItem('gmail_refresh_token', tokens.refresh_token);
-      }
-      localStorage.setItem('gmail_token_expires', Date.now() + (tokens.expires_in * 1000));
-
-      // 5. Redirect to success page
       showSuccess('Authentication Successful', 'Redirecting to your account...');
       setTimeout(() => {
         window.location.href = config.defaultSuccessRedirect;
