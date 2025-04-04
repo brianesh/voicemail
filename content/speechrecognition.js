@@ -405,36 +405,33 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             throw new Error("Authentication required. Please log in.");
         }
 
-        async startAuthFlow() {
-            // Generate PKCE verifier and state
-            const verifier = this.generateCodeVerifier(); // Add this method to your class
-            const state = crypto.getRandomValues(new Uint32Array(2)).join('');
-            
-            // Store securely
-            sessionStorage.setItem('oauth_state', state);
-            sessionStorage.setItem('pkce_verifier', verifier);
-        
-            // Generate auth URL with PKCE
-            const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
-            authUrl.searchParams.append('response_type', 'code');
-            authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
-            authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
-            authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
-            authUrl.searchParams.append('state', state);
-            authUrl.searchParams.append('code_challenge', await this.generateCodeChallenge(verifier));
-            authUrl.searchParams.append('code_challenge_method', 'S256');
-            authUrl.searchParams.append('access_type', 'offline');
-            authUrl.searchParams.append('prompt', 'consent');
-        
-            window.location.href = authUrl.toString();
-        }
-        
-        // Add these methods to your class:
-        generateCodeVerifier() {
-            const array = new Uint8Array(32);
-            crypto.getRandomValues(array);
-            return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
+        // In your startAuthFlow() method:
+async startAuthFlow() {
+    // Generate a cryptographically secure state
+    const state = crypto.randomUUID(); // Modern browsers support this
+    
+    // Also generate PKCE verifier
+    const verifier = this.generateCodeVerifier();
+    
+    // Store BOTH in sessionStorage (more secure than localStorage)
+    sessionStorage.setItem('oauth_state', state);
+    sessionStorage.setItem('pkce_verifier', verifier);
+    
+    // Generate the auth URL
+    const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
+    authUrl.searchParams.append('response_type', 'code');
+    authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
+    authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
+    authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
+    authUrl.searchParams.append('state', state); // Include state in URL
+    authUrl.searchParams.append('code_challenge', await this.generateCodeChallenge(verifier));
+    authUrl.searchParams.append('code_challenge_method', 'S256');
+    authUrl.searchParams.append('access_type', 'offline');
+    authUrl.searchParams.append('prompt', 'consent');
+    
+    // Redirect to Google
+    window.location.href = authUrl.toString();
+}
         
         async generateCodeChallenge(verifier) {
             const encoder = new TextEncoder();
@@ -451,71 +448,69 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const code = params.get('code');
             const state = params.get('state');
             const error = params.get('error');
-            const errorDescription = params.get('error_description');
-
+            
+            // 1. Handle errors first
             if (error) {
-                console.error('OAuth error:', error, errorDescription);
-                this.speak(`Login failed: ${errorDescription || error}. Please try again.`);
-                localStorage.removeItem('access_token');
-                localStorage.removeItem('expires_at');
-                localStorage.removeItem('refresh_token');
-                window.location.href = window.location.origin;
+                console.error('OAuth error:', error, params.get('error_description'));
+                this.speak("Login failed. Please try again.");
+                window.location.href = '/'; // Redirect to home
                 return;
             }
-
-            const storedState = sessionStorage.getItem('oauth_state');
-            if (state !== storedState) {
-                console.error('State mismatch - possible CSRF attack');
-                this.speak("Login failed due to security error. Please try again.");
-                window.location.href = window.location.origin;
+            
+            // 2. Validate state parameter (CRITICAL SECURITY CHECK)
+            const savedState = sessionStorage.getItem('oauth_state');
+            if (!state || !savedState || state !== savedState) {
+                console.error('State mismatch:', {
+                    received: state,
+                    expected: savedState,
+                    storedInSession: sessionStorage.getItem('oauth_state')
+                });
+                this.speak("Security error detected. Please try logging in again.");
+                window.location.href = '/';
                 return;
             }
+            
+            // 3. Clean up the state after validation
             sessionStorage.removeItem('oauth_state');
-
+            
+            // 4. Exchange code for tokens
             if (code) {
                 try {
+                    const verifier = sessionStorage.getItem('pkce_verifier');
+                    if (!verifier) throw new Error('Missing PKCE verifier');
+                    
                     const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded'
-                        },
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: new URLSearchParams({
-                            code: code,
+                            code,
                             client_id: this.OAUTH_CONFIG.clientId,
                             redirect_uri: this.OAUTH_CONFIG.redirectUri,
-                            grant_type: 'authorization_code'
+                            grant_type: 'authorization_code',
+                            code_verifier: verifier
                         })
                     });
-
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        throw new Error(errorData.error || `Token exchange failed with status ${response.status}`);
-                    }
-
-                    const data = await response.json();
-                    if (data.error) throw new Error(data.error);
-
-                    const expiresAt = new Date().getTime() + (data.expires_in * 1000);
-                    localStorage.setItem('access_token', data.access_token);
-                    localStorage.setItem('expires_at', expiresAt);
                     
-                    if (data.refresh_token) {
-                        localStorage.setItem('refresh_token', data.refresh_token);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    
+                    const tokens = await response.json();
+                    
+                    // Store tokens securely
+                    localStorage.setItem('access_token', tokens.access_token);
+                    localStorage.setItem('expires_at', 
+                        Date.now() + (tokens.expires_in * 1000));
+                    
+                    if (tokens.refresh_token) {
+                        localStorage.setItem('refresh_token', tokens.refresh_token);
                     }
                     
-                    this.isAuthenticated = true;
-                    document.getElementById('login-button').style.display = 'none';
-
-                    // Redirect back to main page
-                    const redirectUrl = sessionStorage.getItem('postAuthRedirect') || window.location.origin;
-                    window.location.href = redirectUrl;
+                    // Redirect to app
+                    window.location.href = '/dashboard';
+                    
                 } catch (error) {
                     console.error('Token exchange failed:', error);
                     this.speak("Login failed. Please try again.");
-                    localStorage.removeItem('access_token');
-                    localStorage.removeItem('expires_at');
-                    localStorage.removeItem('refresh_token');
-                    window.location.href = window.location.origin;
+                    window.location.href = '/';
                 }
             }
         }
