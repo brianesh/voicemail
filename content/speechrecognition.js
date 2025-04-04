@@ -46,35 +46,35 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.initRecognition();
             this.checkAuthStatus();
 
-            // Handle OAuth response if we're in the callback
-            // Handle OAuth response if we're in the callback
-if (window.location.hash.includes('access_token=')) {
-    this.handleOAuthResponse();
-} else {
-    // Check for successful auth redirect
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('auth_success') === 'true') {
-        this.isAuthenticated = true;
-        document.getElementById('login-button').style.display = 'none';
-        
-        // Execute pending command if one exists
-        if (urlParams.get('pending_command') === 'true') {
-            const pendingCommand = sessionStorage.getItem('pendingCommand');
-            if (pendingCommand) {
-                try {
-                    const command = JSON.parse(pendingCommand);
-                    setTimeout(() => {
-                        this.executeEnhancedCommand(command);
-                    }, 1000);
-                } catch (error) {
-                    console.error('Error executing pending command:', error);
+                if (window.location.hash.includes('access_token=')) {
+                    this.handleOAuthResponse();
+                } else {
+                    // Check URL params for auth success
+                    const urlParams = new URLSearchParams(window.location.search);
+                    if (urlParams.get('auth_success') === 'true') {
+                        this.isAuthenticated = this.checkAuthStatus();
+                        
+                        // Execute pending command if one exists
+                        if (urlParams.get('pending_command') === 'true') {
+                            const pendingCommand = sessionStorage.getItem('pendingCommand');
+                            if (pendingCommand) {
+                                try {
+                                    const command = JSON.parse(pendingCommand);
+                                    setTimeout(() => {
+                                        this.executeEnhancedCommand(command);
+                                    }, 1000);
+                                } catch (error) {
+                                    console.error('Error executing pending command:', error);
+                                }
+                                sessionStorage.removeItem('pendingCommand');
+                            }
+                        }
+                        
+                        // Clean up URL
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                    }
                 }
-                sessionStorage.removeItem('pendingCommand');
             }
-        }
-    }
-}
-        }
 
         // Initialization methods
         initUI() {
@@ -345,19 +345,25 @@ if (window.location.hash.includes('access_token=')) {
             const token = localStorage.getItem('access_token');
             const expiresAt = localStorage.getItem('expires_at');
             const isExpired = expiresAt && (Date.now() > parseInt(expiresAt));
-        
-            if (token && !isExpired) {
-                this.isAuthenticated = true;
-                document.getElementById('login-button').style.display = 'none';
-                return true;
-            } else {
+            
+            // Clear invalid tokens
+            if ((token && isExpired) || (token && !expiresAt)) {
                 localStorage.removeItem('access_token');
                 localStorage.removeItem('expires_at');
-                localStorage.removeItem('refresh_token');
                 this.isAuthenticated = false;
                 document.getElementById('login-button').style.display = 'block';
                 return false;
             }
+            
+            if (token && !isExpired) {
+                this.isAuthenticated = true;
+                document.getElementById('login-button').style.display = 'none';
+                return true;
+            }
+            
+            this.isAuthenticated = false;
+            document.getElementById('login-button').style.display = 'block';
+            return false;
         }
         
         async ensureValidToken() {
@@ -365,48 +371,7 @@ if (window.location.hash.includes('access_token=')) {
                 return localStorage.getItem('access_token');
             }
             
-            // If we have a refresh token, try to use it
-            const refreshToken = localStorage.getItem('refresh_token');
-            if (refreshToken) {
-                try {
-                    const response = await fetch('https://oauth2.googleapis.com/token', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded'
-                        },
-                        body: new URLSearchParams({
-                            client_id: this.OAUTH_CONFIG.clientId,
-                            refresh_token: refreshToken,
-                            grant_type: 'refresh_token'
-                        })
-                    });
-        
-                    if (!response.ok) {
-                        throw new Error(`Refresh failed with status ${response.status}`);
-                    }
-        
-                    const data = await response.json();
-                    if (data.error) throw new Error(data.error);
-        
-                    const expiresAt = Date.now() + (data.expires_in * 1000);
-                    localStorage.setItem('access_token', data.access_token);
-                    localStorage.setItem('expires_at', expiresAt);
-        
-                    if (data.refresh_token) {
-                        localStorage.setItem('refresh_token', data.refresh_token);
-                    }
-        
-                    this.isAuthenticated = true;
-                    document.getElementById('login-button').style.display = 'none';
-                    return data.access_token;
-                } catch (error) {
-                    console.error('Token refresh failed:', error);
-                    this.startAuthFlow();
-                    throw new Error("Authentication required. Please log in.");
-                }
-            }
-        
-            // If no refresh token, start auth flow
+            // For implicit flow, we can't refresh tokens - need to re-authenticate
             this.startAuthFlow();
             throw new Error("Authentication required. Please log in.");
         }
@@ -424,11 +389,10 @@ if (window.location.hash.includes('access_token=')) {
             authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
             authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
             authUrl.searchParams.append('prompt', 'consent');
-            authUrl.searchParams.append('access_type', 'offline'); // Request refresh token
+            // Removed: authUrl.searchParams.append('access_type', 'offline');
             
             window.location.href = authUrl.toString();
         }
-
         async handleOAuthResponse() {
             const hashParams = new URLSearchParams(window.location.hash.substring(1));
             
