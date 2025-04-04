@@ -3,7 +3,7 @@
   "name": "Voice Controlled Gmail Assistant",
   "version": "1.0",
   "description": "Control Gmail using voice commands",
-  "permissions": ["activeTab", "tabs", "storage", "scripting"],
+  "permissions": ["activeTab", "tabs", "storage", "webNavigation", "scripting"],
   "host_permissions": ["https://mail.google.com/*"],
   "background": {
     "service_worker": "background/background.js"
