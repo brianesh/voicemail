@@ -405,15 +405,17 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
         
         async startAuthFlow() {
-            const verifier = this.generateCodeVerifier();
+            // Generate a secure random state
             const state = crypto.getRandomValues(new Uint32Array(2)).join('');
-        
-            // Store in localStorage for persistence
+            const verifier = this.generateCodeVerifier();
+            
+            // Store BOTH in localStorage (persists across page reloads)
             localStorage.setItem('oauth_state', state);
             localStorage.setItem('pkce_verifier', verifier);
-        
-            console.log("Generated State:", state);
-        
+            
+            console.log("🔵 Stored State:", state);  // Debug logging
+            
+            // Build the auth URL
             const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
             authUrl.searchParams.append('response_type', 'code');
             authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
@@ -424,12 +426,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             authUrl.searchParams.append('code_challenge_method', 'S256');
             authUrl.searchParams.append('access_type', 'offline');
             authUrl.searchParams.append('prompt', 'consent');
-        
+            
             // Store current location for post-auth redirect
             if (!window.location.pathname.includes('oauth-callback')) {
                 localStorage.setItem('postAuthRedirect', window.location.href);
             }
-        
+            
+            // Redirect to auth provider
             window.location.href = authUrl.toString();
         }
         
@@ -453,74 +456,110 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const code = params.get('code');
             const returnedState = params.get('state');
             const storedState = localStorage.getItem('oauth_state');
+            const verifier = localStorage.getItem('pkce_verifier');
         
-            console.log("🟢 Returned State:", returnedState);
-            console.log("🟠 Stored State:", storedState);
+            console.log("🔵 OAuth Callback Parameters:", { 
+                code: !!code, 
+                returnedState, 
+                storedState,
+                hasVerifier: !!verifier
+            });
         
-            if (!storedState) {
-                console.warn("⚠️ No stored state found! Possible page refresh before OAuth response.");
-                await this.startAuthFlow();  // Restart authentication flow
+            // 1. Check for OAuth errors first
+            if (params.get('error')) {
+                const error = params.get('error');
+                const errorDesc = params.get('error_description') || 'No description';
+                console.error('❌ OAuth Error:', error, errorDesc);
+                this.showPopup(`Auth Error: ${error}`, "ERROR");
                 return;
             }
         
-            if (returnedState !== storedState) {
-                console.error("❌ State Mismatch Detected!");
-                localStorage.removeItem('oauth_state');
-                alert("Session expired or mismatch occurred. Restarting authentication...");
+            // 2. Verify state parameter exists
+            if (!returnedState) {
+                console.error('❌ Missing state parameter in callback');
+                this.showPopup("Security Error: Missing state parameter", "ERROR");
+                return;
+            }
+        
+            // 3. Verify we have a stored state to compare with
+            if (!storedState) {
+                console.error('❌ No stored state found - possible page reload');
+                this.showPopup("Session expired - restarting auth", "ERROR");
                 await this.startAuthFlow();
                 return;
             }
         
-            localStorage.removeItem('oauth_state');  // Clean up
+            // 4. Verify state matches
+            if (returnedState !== storedState) {
+                console.error('❌ State mismatch:', { returnedState, storedState });
+                this.showPopup("Security Error: State mismatch", "ERROR");
+                localStorage.removeItem('oauth_state');
+                await this.startAuthFlow();
+                return;
+            }
         
-            if (code) {
-                try {
-                    const verifier = localStorage.getItem('pkce_verifier');
-                    if (!verifier) {
-                        throw new Error("Missing PKCE verifier");
-                    }
+            // 5. Verify we have a code
+            if (!code) {
+                console.error('❌ Missing authorization code');
+                this.showPopup("Missing authorization code", "ERROR");
+                return;
+            }
         
-                    const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: new URLSearchParams({
-                            code: code,
-                            client_id: this.OAUTH_CONFIG.clientId,
-                            redirect_uri: this.OAUTH_CONFIG.redirectUri,
-                            grant_type: 'authorization_code',
-                            code_verifier: verifier
-                        })
-                    });
+            // 6. Verify we have a code verifier
+            if (!verifier) {
+                console.error('❌ Missing PKCE verifier');
+                this.showPopup("Security Error: Missing verifier", "ERROR");
+                return;
+            }
         
-                    if (!response.ok) {
-                        throw new Error(`Token exchange failed: ${response.status}`);
-                    }
+            try {
+                // Exchange code for tokens
+                const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        code,
+                        client_id: this.OAUTH_CONFIG.clientId,
+                        redirect_uri: this.OAUTH_CONFIG.redirectUri,
+                        grant_type: 'authorization_code',
+                        code_verifier: verifier
+                    })
+                });
         
-                    const data = await response.json();
-                    if (data.error) throw new Error(data.error);
-        
-                    localStorage.setItem('access_token', data.access_token);
-                    localStorage.setItem('expires_at', Date.now() + (data.expires_in * 1000));
-        
-                    if (data.refresh_token) {
-                        localStorage.setItem('refresh_token', data.refresh_token);
-                    }
-        
-                    this.isAuthenticated = true;
-                    document.getElementById('login-button').style.display = 'none';
-                    
-                    // Redirect to clean URL
-                    const redirectUrl = localStorage.getItem('postAuthRedirect') || 
-                                       window.location.origin + window.location.pathname.replace('/oauth-callback', '');
-                    window.location.href = redirectUrl;
-                    
-                } catch (error) {
-                    console.error('❌ Token exchange failed:', error);
-                    localStorage.removeItem('access_token');
-                    localStorage.removeItem('expires_at');
-                    localStorage.removeItem('refresh_token');
-                    window.location.href = window.location.origin;
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('❌ Token exchange failed:', errorData);
+                    throw new Error(errorData.error || 'Token exchange failed');
                 }
+        
+                const tokens = await response.json();
+                
+                // Store tokens
+                localStorage.setItem('access_token', tokens.access_token);
+                localStorage.setItem('expires_at', Date.now() + (tokens.expires_in * 1000));
+                
+                if (tokens.refresh_token) {
+                    localStorage.setItem('refresh_token', tokens.refresh_token);
+                }
+        
+                // Clean up
+                localStorage.removeItem('oauth_state');
+                localStorage.removeItem('pkce_verifier');
+                
+                // Update UI
+                this.isAuthenticated = true;
+                document.getElementById('login-button').style.display = 'none';
+                
+                // Redirect to clean URL or original page
+                const redirectUrl = localStorage.getItem('postAuthRedirect') || window.location.origin;
+                localStorage.removeItem('postAuthRedirect');
+                window.location.href = redirectUrl;
+        
+            } catch (error) {
+                console.error('❌ Authentication failed:', error);
+                this.showPopup(`Auth Failed: ${error.message}`, "ERROR");
+                localStorage.removeItem('oauth_state');
+                localStorage.removeItem('pkce_verifier');
             }
         }
         
