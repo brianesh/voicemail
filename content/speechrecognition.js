@@ -442,14 +442,128 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         async handleOAuthResponse() {
             const params = new URLSearchParams(window.location.search);
+            const code = params.get('code');
             const returnedState = params.get('state');
             const storedState = localStorage.getItem('oauth_state');
+            const verifier = localStorage.getItem('pkce_verifier');
         
-            console.log("🟢 OAuth Callback Debugging:");
-            console.log("→ Returned State:", returnedState);
-            console.log("→ Stored State:", storedState);
-        }
+            console.log("OAuth Callback Parameters:", { 
+                code: !!code, 
+                returnedState, 
+                storedState,
+                hasVerifier: !!verifier
+            });
         
+            // 1. Handle OAuth errors first
+            if (params.get('error')) {
+                const error = params.get('error');
+                const errorDesc = params.get('error_description') || 'No description';
+                console.error('OAuth Error:', error, errorDesc);
+                this.showPopup(`Auth Error: ${error}`, "ERROR");
+                return;
+            }
+        
+            // 2. Verify state parameter exists
+            if (!returnedState) {
+                console.error('Missing state parameter in callback');
+                this.showPopup("Security Error: Missing state parameter", "ERROR");
+                return;
+            }
+        
+            // 3. Handle missing stored state (due to session expiration or page reload)
+            if (!storedState) {
+                console.warn('No stored state found, possibly due to session expiration or new tab.');
+                this.showPopup("Session expired, restarting authentication...", "WARNING");
+                
+                // Restart authentication flow
+                localStorage.removeItem('oauth_state');
+                localStorage.removeItem('pkce_verifier');
+                await this.startAuthFlow();
+                return;
+            }
+        
+            // 4. Ensure the returned state matches the stored state
+            if (returnedState !== storedState) {
+                console.error('State mismatch detected:', { returnedState, storedState });
+                this.showPopup("Security Error: State mismatch", "ERROR");
+        
+                // Clear auth state to prevent issues in future attempts
+                localStorage.removeItem('oauth_state');
+                localStorage.removeItem('pkce_verifier');
+        
+                // Restart authentication
+                await this.startAuthFlow();
+                return;
+            }
+        
+            // 5. Ensure we have an authorization code
+            if (!code) {
+                console.error('Missing authorization code');
+                this.showPopup("Missing authorization code", "ERROR");
+                return;
+            }
+        
+            // 6. Ensure we have a valid PKCE verifier
+            if (!verifier) {
+                console.error('Missing PKCE verifier');
+                this.showPopup("Security Error: Missing PKCE verifier", "ERROR");
+                return;
+            }
+        
+            try {
+                // Exchange authorization code for tokens
+                const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        code,
+                        client_id: this.OAUTH_CONFIG.clientId,
+                        redirect_uri: this.OAUTH_CONFIG.redirectUri,
+                        grant_type: 'authorization_code',
+                        code_verifier: verifier
+                    })
+                });
+        
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('Token exchange failed:', errorData);
+                    throw new Error(errorData.error || 'Token exchange failed');
+                }
+        
+                const tokens = await response.json();
+        
+                // Store tokens securely
+                localStorage.setItem('access_token', tokens.access_token);
+                localStorage.setItem('expires_at', Date.now() + (tokens.expires_in * 1000));
+                
+                if (tokens.refresh_token) {
+                    localStorage.setItem('refresh_token', tokens.refresh_token);
+                }
+        
+                // Clean up auth state
+                localStorage.removeItem('oauth_state');
+                localStorage.removeItem('pkce_verifier');
+        
+                // Update UI
+                this.isAuthenticated = true;
+                document.getElementById('login-button').style.display = 'none';
+        
+                // Redirect to original page before auth flow
+                const redirectUrl = localStorage.getItem('postAuthRedirect') || window.location.origin;
+                localStorage.removeItem('postAuthRedirect');
+                window.location.href = redirectUrl;
+        
+            } catch (error) {
+                console.error('Authentication failed:', error);
+                this.showPopup(`Auth Failed: ${error.message}`, "ERROR");
+        
+                // Clear auth state and restart flow if needed
+                localStorage.removeItem('oauth_state');
+                localStorage.removeItem('pkce_verifier');
+                await this.startAuthFlow();
+            }
+        }        
+
         // Network and API Functions
         checkRateLimit() {
             const now = Date.now();
