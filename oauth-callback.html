@@ -1,4 +1,4 @@
-<!-- oauth-callback.html - Modified version -->
+<!-- oauth-callback.html -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -59,15 +59,25 @@
 
         // Get the original URL from sessionStorage
         const originalUrl = sessionStorage.getItem('preAuthUrl') || 'https://mail.google.com';
+        const pendingCommand = sessionStorage.getItem('pendingCommand');
+        
+        // Clear the stored values
+        sessionStorage.removeItem('preAuthUrl');
+        sessionStorage.removeItem('pendingCommand');
         
         authStatus.innerHTML = `
           <h2 class="success">Success!</h2>
           <p>Redirecting back to application...</p>
         `;
         
-        // Redirect to original page
+        // Redirect to original page with a flag indicating successful auth
         setTimeout(() => {
-          window.location.href = originalUrl;
+          const url = new URL(originalUrl);
+          url.searchParams.set('auth_success', 'true');
+          if (pendingCommand) {
+            url.searchParams.set('pending_command', 'true');
+          }
+          window.location.href = url.toString();
         }, 1000);
       } else {
         authStatus.innerHTML = `

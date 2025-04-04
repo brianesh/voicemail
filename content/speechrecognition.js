@@ -47,9 +47,33 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.checkAuthStatus();
 
             // Handle OAuth response if we're in the callback
-            if (window.location.hash.includes('access_token=')) {
-                this.handleOAuthResponse();
+            // Handle OAuth response if we're in the callback
+if (window.location.hash.includes('access_token=')) {
+    this.handleOAuthResponse();
+} else {
+    // Check for successful auth redirect
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('auth_success') === 'true') {
+        this.isAuthenticated = true;
+        document.getElementById('login-button').style.display = 'none';
+        
+        // Execute pending command if one exists
+        if (urlParams.get('pending_command') === 'true') {
+            const pendingCommand = sessionStorage.getItem('pendingCommand');
+            if (pendingCommand) {
+                try {
+                    const command = JSON.parse(pendingCommand);
+                    setTimeout(() => {
+                        this.executeEnhancedCommand(command);
+                    }, 1000);
+                } catch (error) {
+                    console.error('Error executing pending command:', error);
+                }
+                sessionStorage.removeItem('pendingCommand');
             }
+        }
+    }
+}
         }
 
         // Initialization methods
@@ -340,11 +364,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             if (this.checkAuthStatus()) {
                 return localStorage.getItem('access_token');
             }
-        
+            
+            // If we have a refresh token, try to use it
             const refreshToken = localStorage.getItem('refresh_token');
             if (refreshToken) {
                 try {
-                    const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
+                    const response = await fetch('https://oauth2.googleapis.com/token', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded'
@@ -363,7 +388,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     const data = await response.json();
                     if (data.error) throw new Error(data.error);
         
-                    const expiresAt = new Date().getTime() + (data.expires_in * 1000);
+                    const expiresAt = Date.now() + (data.expires_in * 1000);
                     localStorage.setItem('access_token', data.access_token);
                     localStorage.setItem('expires_at', expiresAt);
         
@@ -376,18 +401,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     return data.access_token;
                 } catch (error) {
                     console.error('Token refresh failed:', error);
-                    localStorage.removeItem('access_token');
-                    localStorage.removeItem('expires_at');
-                    localStorage.removeItem('refresh_token');
-                    this.isAuthenticated = false;
-                    document.getElementById('login-button').style.display = 'block';
-        
-                    await this.startAuthFlow();
+                    this.startAuthFlow();
                     throw new Error("Authentication required. Please log in.");
                 }
             }
         
-            await this.startAuthFlow();
+            // If no refresh token, start auth flow
+            this.startAuthFlow();
             throw new Error("Authentication required. Please log in.");
         }
         
@@ -404,6 +424,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
             authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
             authUrl.searchParams.append('prompt', 'consent');
+            authUrl.searchParams.append('access_type', 'offline'); // Request refresh token
             
             window.location.href = authUrl.toString();
         }
