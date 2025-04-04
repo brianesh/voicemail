@@ -371,10 +371,16 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 return localStorage.getItem('access_token');
             }
             
-            // For implicit flow, we can't refresh tokens - need to re-authenticate
+            // Store the current command as pending
+            if (this.currentCommand) {
+                this.pendingCommand = this.currentCommand;
+            }
+            
+            // Start auth flow and throw error to stop current operation
             this.startAuthFlow();
-            throw new Error("Authentication required. Please log in.");
+            throw new Error("Redirecting to login...");
         }
+        
         
         async startAuthFlow() {
             // Store the current URL and any pending command
