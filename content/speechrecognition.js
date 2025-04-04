@@ -1,4 +1,4 @@
-// Voice Email Assistant - Complete Working Version
+// Voice Email Assistant - Simplified OAuth Version
 if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
     console.error("Speech Recognition not supported in this browser.");
     alert("Your browser doesn't support speech recognition. Please use Chrome or Edge.");
@@ -28,7 +28,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.API_RATE_LIMIT = 5;
             this.API_TIMEOUT = 10000;
 
-            // OAuth Configuration - REPLACE WITH YOUR ACTUAL CREDENTIALS
+            // OAuth Configuration
             this.OAUTH_CONFIG = {
                 clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
                 redirectUri: 'http://localhost:8080/oauth-callback',
@@ -39,15 +39,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 ].join(' '),
                 authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
                 tokenUrl: 'https://oauth2.googleapis.com/token'
-              };
-
-            // Verify OAuth configuration
-            if (!this.OAUTH_CONFIG.clientId || this.OAUTH_CONFIG.clientId.includes('YOUR_CLIENT_ID')) {
-                console.error("OAuth configuration is incomplete");
-                this.showPopup("Configuration error", "ERROR");
-                this.speak("This application is not properly configured. Please contact support.");
-                return;
-            }
+            };
 
             // Initialize the app
             this.initUI();
@@ -63,7 +55,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         // Initialization methods
         initUI() {
-            // Create UI elements only if they don't exist
             if (!document.getElementById('speech-popup')) {
                 this.popup = document.createElement("div");
                 this.popup.id = "speech-popup";
@@ -123,7 +114,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 document.body.appendChild(this.commandHistory);
             }
 
-            // Add a login button
             if (!document.getElementById('login-button')) {
                 this.loginButton = document.createElement("button");
                 this.loginButton.id = "login-button";
@@ -235,7 +225,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 
                 this.showPopup(errorMessage, "ERROR");
                 
-                // Try restarting after error
                 setTimeout(() => this.recognition.start(), 1000);
             };
 
@@ -302,9 +291,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         speak(text) {
             try {
-                // Cancel any ongoing speech
                 window.speechSynthesis.cancel();
-                
                 this.speechQueue.push(text);
                 this.processQueue();
             } catch (error) {
@@ -406,60 +393,24 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
         
         async startAuthFlow() {
-            const verifier = this.generateCodeVerifier();
-            const state = this.generateRandomString(16);
-            
-            // Store verifier and state
-            localStorage.setItem('pkce_verifier', verifier);
-            localStorage.setItem('oauth_state', state);
-            
-            // Build the auth URL with state
             const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
             authUrl.searchParams.append('response_type', 'code');
             authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
             authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
             authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
-            authUrl.searchParams.append('code_challenge', await this.generateCodeChallenge(verifier));
-            authUrl.searchParams.append('code_challenge_method', 'S256');
             authUrl.searchParams.append('access_type', 'offline');
             authUrl.searchParams.append('prompt', 'consent');
-            authUrl.searchParams.append('state', state);
             
-            // Store current location for post-auth redirect
             if (!window.location.pathname.includes('oauth-callback')) {
                 localStorage.setItem('postAuthRedirect', window.location.href);
             }
             
-            // Redirect to auth provider
             window.location.href = authUrl.toString();
-        }
-        
-        generateCodeVerifier() {
-            const array = new Uint8Array(32);
-            crypto.getRandomValues(array);
-            return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-        
-        generateRandomString(length) {
-            const array = new Uint8Array(length);
-            crypto.getRandomValues(array);
-            return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-        
-        async generateCodeChallenge(verifier) {
-            const encoder = new TextEncoder();
-            const data = encoder.encode(verifier);
-            const digest = await crypto.subtle.digest('SHA-256', data);
-            return btoa(String.fromCharCode(...new Uint8Array(digest)))
-                .replace(/\+/g, '-')
-                .replace(/\//g, '_')
-                .replace(/=+$/, '');
         }
 
         async handleOAuthResponse() {
             const params = new URLSearchParams(window.location.search);
             
-            // 1. Handle OAuth errors first
             if (params.get('error')) {
                 const error = params.get('error');
                 const errorDesc = params.get('error_description') || 'No description';
@@ -468,37 +419,15 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                 return;
             }
         
-            // 2. Validate state parameter
-            const receivedState = params.get('state');
-            const storedState = localStorage.getItem('oauth_state');
-            
-            if (!receivedState || !storedState || receivedState !== storedState) {
-                console.error('State mismatch - received:', receivedState, 'stored:', storedState);
-                this.showPopup("Security Error: Invalid session state", "ERROR");
-                localStorage.removeItem('oauth_state');
-                localStorage.removeItem('pkce_verifier');
-                return;
-            }
-            
             const code = params.get('code');
-            const verifier = localStorage.getItem('pkce_verifier');
         
-            // 3. Ensure we have an authorization code
             if (!code) {
                 console.error('Missing authorization code');
                 this.showPopup("Missing authorization code", "ERROR");
                 return;
             }
         
-            // 4. Ensure we have a valid PKCE verifier
-            if (!verifier) {
-                console.error('Missing PKCE verifier');
-                this.showPopup("Security Error: Missing PKCE verifier", "ERROR");
-                return;
-            }
-        
             try {
-                // Exchange authorization code for tokens
                 const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -506,8 +435,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                         code,
                         client_id: this.OAUTH_CONFIG.clientId,
                         redirect_uri: this.OAUTH_CONFIG.redirectUri,
-                        grant_type: 'authorization_code',
-                        code_verifier: verifier
+                        grant_type: 'authorization_code'
                     })
                 });
         
@@ -519,7 +447,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         
                 const tokens = await response.json();
         
-                // Store tokens securely
                 localStorage.setItem('access_token', tokens.access_token);
                 localStorage.setItem('expires_at', Date.now() + (tokens.expires_in * 1000));
                 
@@ -527,15 +454,9 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     localStorage.setItem('refresh_token', tokens.refresh_token);
                 }
         
-                // Clean up auth state
-                localStorage.removeItem('oauth_state');
-                localStorage.removeItem('pkce_verifier');
-        
-                // Update UI
                 this.isAuthenticated = true;
                 document.getElementById('login-button').style.display = 'none';
         
-                // Redirect to original page before auth flow
                 const redirectUrl = localStorage.getItem('postAuthRedirect') || window.location.origin;
                 localStorage.removeItem('postAuthRedirect');
                 window.location.href = redirectUrl;
@@ -543,17 +464,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             } catch (error) {
                 console.error('Authentication failed:', error);
                 this.showPopup(`Auth Failed: ${error.message}`, "ERROR");
-        
-                // Clear auth state
-                localStorage.removeItem('oauth_state');
-                localStorage.removeItem('pkce_verifier');
             }
         }
         
         // Network and API Functions
         checkRateLimit() {
             const now = Date.now();
-            // Remove timestamps older than 1 minute
             this.apiCallTimestamps = this.apiCallTimestamps.filter(timestamp => now - timestamp < 60000);
             
             if (this.apiCallTimestamps.length >= this.API_RATE_LIMIT) {
@@ -599,7 +515,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                         throw error;
                     }
                     
-                    // Exponential backoff
                     const delay = Math.pow(2, this.retryAttempts) * 1000;
                     await new Promise(resolve => setTimeout(resolve, delay));
                     
@@ -1333,7 +1248,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
                     throw new Error("No internet connection available. Please check your network.");
                 }
 
-                // Ensure we're authenticated before proceeding
                 await this.ensureValidToken();
 
                 switch (parsedCommand.action) {
