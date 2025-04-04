@@ -31,7 +31,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             // OAuth Configuration - Modified for implicit flow
             this.OAUTH_CONFIG = {
                 clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-                redirectUri: 'http://localhost:8080/oauth-callback',
+                redirectUri: chrome.identity ? chrome.identity.getRedirectURL() : 'http://localhost:8080/oauth-callback',
                 scope: [
                     'https://www.googleapis.com/auth/gmail.readonly',
                     'https://www.googleapis.com/auth/gmail.modify',
@@ -341,54 +341,57 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
 
         // Authentication Functions
-        checkAuthStatus() {
-            // First check sessionStorage (for cross-tab auth)
-            let token = sessionStorage.getItem('gmail_access_token');
-            let expiresAt = sessionStorage.getItem('gmail_expires_at');
+       // Updated checkAuthStatus method
+async checkAuthStatus() {
+    try {
+        // Check for Chrome extension identity first
+        if (chrome.identity) {
+            const token = await new Promise(resolve => {
+                chrome.identity.getAuthToken({ interactive: false }, token => {
+                    resolve(token);
+                });
+            });
             
-            // Fallback to localStorage
-            if (!token) {
-                token = localStorage.getItem('access_token');
-                expiresAt = localStorage.getItem('expires_at');
-            }
-        
-            const isExpired = expiresAt && (Date.now() > parseInt(expiresAt));
-            
-            if (token && !isExpired) {
+            if (token) {
                 this.isAuthenticated = true;
                 document.getElementById('login-button').style.display = 'none';
-                
-                // Move token to localStorage for persistence
-                localStorage.setItem('access_token', token);
-                localStorage.setItem('expires_at', expiresAt);
                 return true;
             }
-            
-            // Clear invalid tokens
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('expires_at');
-            sessionStorage.removeItem('gmail_access_token');
-            sessionStorage.removeItem('gmail_expires_at');
-            
-            this.isAuthenticated = false;
-            document.getElementById('login-button').style.display = 'block';
-            return false;
         }
+
+        // Fallback to localStorage check
+        const token = localStorage.getItem('access_token');
+        const expiresAt = localStorage.getItem('expires_at');
         
-        async ensureValidToken() {
-            if (this.checkAuthStatus()) {
-                return localStorage.getItem('access_token');
-            }
-            
-            // Store the current command as pending
-            if (this.currentCommand) {
-                this.pendingCommand = this.currentCommand;
-            }
-            
-            // Start auth flow and throw error to stop current operation
-            this.startAuthFlow();
-            throw new Error("Redirecting to login...");
+        if (token && expiresAt && Date.now() < parseInt(expiresAt)) {
+            this.isAuthenticated = true;
+            document.getElementById('login-button').style.display = 'none';
+            return true;
         }
+
+        // Final fallback to sessionStorage
+        const sessionToken = sessionStorage.getItem('gmail_access_token');
+        const sessionExpires = sessionStorage.getItem('gmail_expires_at');
+        
+        if (sessionToken && sessionExpires && Date.now() < parseInt(sessionExpires)) {
+            localStorage.setItem('access_token', sessionToken);
+            localStorage.setItem('expires_at', sessionExpires);
+            this.isAuthenticated = true;
+            document.getElementById('login-button').style.display = 'none';
+            return true;
+        }
+
+        // If all checks fail
+        this.isAuthenticated = false;
+        document.getElementById('login-button').style.display = 'block';
+        return false;
+    } catch (error) {
+        console.error('Auth check failed:', error);
+        this.isAuthenticated = false;
+        document.getElementById('login-button').style.display = 'block';
+        return false;
+    }
+}
         
         
         async startAuthFlow() {
