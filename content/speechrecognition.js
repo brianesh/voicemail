@@ -1375,4 +1375,13 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         console.error("Failed to initialize voice email assistant:", error);
         alert("Failed to initialize voice email assistant. Please check the console for details.");
     }
+    // At the end of the file
+if (window.location.hostname === 'mail.google.com') {
+    try {
+        const assistant = new VoiceEmailAssistant();
+        window.addEventListener('beforeunload', () => assistant.cleanup());
+    } catch (error) {
+        console.error("Failed to initialize voice email assistant:", error);
+    }
+}
 }
