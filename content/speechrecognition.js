@@ -405,21 +405,45 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             throw new Error("Authentication required. Please log in.");
         }
 
-        startAuthFlow() {
-            // Generate a more robust state parameter
+        async startAuthFlow() {
+            // Generate PKCE verifier and state
+            const verifier = this.generateCodeVerifier(); // Add this method to your class
             const state = crypto.getRandomValues(new Uint32Array(2)).join('');
-            sessionStorage.setItem('oauth_state', state);
             
+            // Store securely
+            sessionStorage.setItem('oauth_state', state);
+            sessionStorage.setItem('pkce_verifier', verifier);
+        
+            // Generate auth URL with PKCE
             const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
             authUrl.searchParams.append('response_type', 'code');
             authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
             authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
             authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
             authUrl.searchParams.append('state', state);
+            authUrl.searchParams.append('code_challenge', await this.generateCodeChallenge(verifier));
+            authUrl.searchParams.append('code_challenge_method', 'S256');
             authUrl.searchParams.append('access_type', 'offline');
             authUrl.searchParams.append('prompt', 'consent');
         
             window.location.href = authUrl.toString();
+        }
+        
+        // Add these methods to your class:
+        generateCodeVerifier() {
+            const array = new Uint8Array(32);
+            crypto.getRandomValues(array);
+            return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        
+        async generateCodeChallenge(verifier) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(verifier);
+            const digest = await crypto.subtle.digest('SHA-256', data);
+            return btoa(String.fromCharCode(...new Uint8Array(digest)))
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=+$/, '');
         }
 
         async handleOAuthResponse() {
