@@ -342,75 +342,102 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         // Authentication Functions
        // Updated checkAuthStatus method
-async checkAuthStatus() {
-    try {
-        // Check for Chrome extension identity first
-        if (chrome.identity) {
-            const token = await new Promise(resolve => {
-                chrome.identity.getAuthToken({ interactive: false }, token => {
-                    resolve(token);
-                });
-            });
+       async checkAuthStatus() {
+        try {
+            // 1. First check Chrome extension identity
+            if (chrome.identity) {
+                try {
+                    const token = await new Promise((resolve) => {
+                        chrome.identity.getAuthToken({ interactive: false }, resolve);
+                    });
+                    
+                    if (token) {
+                        this.isAuthenticated = true;
+                        document.getElementById('login-button').style.display = 'none';
+                        
+                        // Store in localStorage for consistency
+                        localStorage.setItem('access_token', token);
+                        localStorage.setItem('expires_at', Date.now() + 3600 * 1000);
+                        return true;
+                    }
+                } catch (error) {
+                    console.log('Chrome identity silent auth failed, falling back:', error);
+                }
+            }
+    
+            // 2. Check localStorage (for non-extension or fallback)
+            const token = localStorage.getItem('access_token');
+            const expiresAt = localStorage.getItem('expires_at');
             
-            if (token) {
+            if (token && expiresAt && Date.now() < parseInt(expiresAt)) {
                 this.isAuthenticated = true;
                 document.getElementById('login-button').style.display = 'none';
                 return true;
             }
+            
+            // 3. If no valid token found
+            this.isAuthenticated = false;
+            document.getElementById('login-button').style.display = 'block';
+            return false;
+        } catch (error) {
+            console.error('Auth check failed:', error);
+            this.isAuthenticated = false;
+            document.getElementById('login-button').style.display = 'block';
+            return false;
         }
-
-        // Fallback to localStorage check
-        const token = localStorage.getItem('access_token');
-        const expiresAt = localStorage.getItem('expires_at');
-        
-        if (token && expiresAt && Date.now() < parseInt(expiresAt)) {
-            this.isAuthenticated = true;
-            document.getElementById('login-button').style.display = 'none';
-            return true;
-        }
-
-        // Final fallback to sessionStorage
-        const sessionToken = sessionStorage.getItem('gmail_access_token');
-        const sessionExpires = sessionStorage.getItem('gmail_expires_at');
-        
-        if (sessionToken && sessionExpires && Date.now() < parseInt(sessionExpires)) {
-            localStorage.setItem('access_token', sessionToken);
-            localStorage.setItem('expires_at', sessionExpires);
-            this.isAuthenticated = true;
-            document.getElementById('login-button').style.display = 'none';
-            return true;
-        }
-
-        // If all checks fail
-        this.isAuthenticated = false;
-        document.getElementById('login-button').style.display = 'block';
-        return false;
-    } catch (error) {
-        console.error('Auth check failed:', error);
-        this.isAuthenticated = false;
-        document.getElementById('login-button').style.display = 'block';
-        return false;
     }
-}
         
         
-        async startAuthFlow() {
-            // Store the current URL and any pending command
-            sessionStorage.setItem('preAuthUrl', window.location.href);
-            if (this.pendingCommand) {
-                sessionStorage.setItem('pendingCommand', JSON.stringify(this.pendingCommand));
+async startAuthFlow() {
+    // First try Chrome Identity API if available
+    if (chrome.identity) {
+        try {
+            const token = await new Promise((resolve, reject) => {
+                chrome.identity.getAuthToken(
+                    { interactive: true }, // Force showing auth UI if needed
+                    (token) => {
+                        if (chrome.runtime.lastError) {
+                            reject(chrome.runtime.lastError);
+                        } else {
+                            resolve(token);
+                        }
+                    }
+                );
+            });
+            
+            if (token) {
+                // Store token in localStorage for consistency
+                localStorage.setItem('access_token', token);
+                // Chrome tokens don't provide expires_at, but they auto-refresh
+                localStorage.setItem('expires_at', Date.now() + 3600 * 1000);
+                
+                this.isAuthenticated = true;
+                document.getElementById('login-button').style.display = 'none';
+                return true;
             }
-            
-            const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
-            authUrl.searchParams.append('response_type', 'token');
-            authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
-            authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
-            authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
-            authUrl.searchParams.append('prompt', 'consent');
-            // Removed: authUrl.searchParams.append('access_type', 'offline');
-            
-            window.location.href = authUrl.toString();
+        } catch (error) {
+            console.error('Chrome identity auth failed:', error);
+            // Fall through to regular OAuth flow
         }
+    }
+    
+    // Fallback to regular OAuth flow for non-extension contexts
+    const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
+    authUrl.searchParams.append('response_type', 'token');
+    authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
+    authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
+    authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
+    authUrl.searchParams.append('prompt', 'consent');
+    
+    // Store current state before redirect
+    sessionStorage.setItem('preAuthUrl', window.location.href);
+    if (this.pendingCommand) {
+        sessionStorage.setItem('pendingCommand', JSON.stringify(this.pendingCommand));
+    }
+    
+    window.location.href = authUrl.toString();
+}
+
         async handleOAuthResponse() {
             const hashParams = new URLSearchParams(window.location.hash.substring(1));
             
