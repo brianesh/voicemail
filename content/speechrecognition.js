@@ -31,17 +31,15 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             // OAuth Configuration - REPLACE WITH YOUR ACTUAL CREDENTIALS
             this.OAUTH_CONFIG = {
                 clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-                // Remove clientSecret completely from client-side code
-                redirectUri: 'http://localhost:8080/oauth-callback.html', // For development
+                redirectUri: 'http://localhost:8080/oauth-callback', // No .html extension
                 scope: [
-                    'https://www.googleapis.com/auth/gmail.readonly',
-                    'https://www.googleapis.com/auth/gmail.modify',
-                    'https://www.googleapis.com/auth/gmail.send'
-                ].join(' '), // Properly formatted scopes
+                  'https://www.googleapis.com/auth/gmail.readonly',
+                  'https://www.googleapis.com/auth/gmail.modify',
+                  'https://www.googleapis.com/auth/gmail.send'
+                ].join(' '),
                 authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
                 tokenUrl: 'https://oauth2.googleapis.com/token'
-            };
-
+              };
             // Verify OAuth configuration
             if (!this.OAUTH_CONFIG.clientId || this.OAUTH_CONFIG.clientId.includes('YOUR_CLIENT_ID')) {
                 console.error("OAuth configuration is incomplete");
