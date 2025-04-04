@@ -1,4 +1,3 @@
-// Voice Email Assistant - Simplified OAuth Version
 if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
     console.error("Speech Recognition not supported in this browser.");
     alert("Your browser doesn't support speech recognition. Please use Chrome or Edge.");
@@ -27,18 +26,18 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.MAX_RETRIES = 2;
             this.API_RATE_LIMIT = 5;
             this.API_TIMEOUT = 10000;
+            this.pendingCommand = null;
 
-            // OAuth Configuration
+            // OAuth Configuration - Modified for implicit flow
             this.OAUTH_CONFIG = {
                 clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-                redirectUri: 'http://localhost:8080/oauth-callback',
+                redirectUri: window.location.origin + '/oauth-callback.html',
                 scope: [
                     'https://www.googleapis.com/auth/gmail.readonly',
                     'https://www.googleapis.com/auth/gmail.modify',
                     'https://www.googleapis.com/auth/gmail.send'
                 ].join(' '),
                 authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
-                // No tokenUrl needed for implicit flow
             };
 
             // Initialize the app
@@ -48,7 +47,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.checkAuthStatus();
 
             // Handle OAuth response if we're in the callback
-            if (window.location.search.includes('code=')) {
+            if (window.location.hash.includes('access_token=')) {
                 this.handleOAuthResponse();
             }
         }
@@ -393,8 +392,11 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
         
         async startAuthFlow() {
-            // Store the current URL before redirecting to OAuth
+            // Store the current URL and any pending command
             sessionStorage.setItem('preAuthUrl', window.location.href);
+            if (this.pendingCommand) {
+                sessionStorage.setItem('pendingCommand', JSON.stringify(this.pendingCommand));
+            }
             
             const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
             authUrl.searchParams.append('response_type', 'token');
@@ -407,57 +409,50 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
 
         async handleOAuthResponse() {
-            const params = new URLSearchParams(window.location.search);
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
             
-            if (params.get('error')) {
-                const error = params.get('error');
+            if (hashParams.get('error')) {
+                const error = hashParams.get('error');
                 console.error('OAuth Error:', error);
                 this.showPopup(`Auth Error: ${error}`, "ERROR");
                 return;
             }
             
-            const code = params.get('code');
-            if (!code) {
-                console.error('Missing authorization code');
-                this.showPopup("Missing authorization code", "ERROR");
+            const accessToken = hashParams.get('access_token');
+            if (!accessToken) {
+                console.error('Missing access token');
+                this.showPopup("Missing access token", "ERROR");
                 return;
             }
             
-            try {
-                const response = await fetch(this.OAUTH_CONFIG.tokenUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({
-                        code,
-                        client_id: this.OAUTH_CONFIG.clientId,
-                        redirect_uri: this.OAUTH_CONFIG.redirectUri,
-                        grant_type: 'authorization_code'
-                    })
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Token exchange failed');
-                }
-                
-                const tokens = await response.json();
-                
-                localStorage.setItem('access_token', tokens.access_token);
-                localStorage.setItem('expires_at', Date.now() + (tokens.expires_in * 1000));
-                
-                if (tokens.refresh_token) {
-                    localStorage.setItem('refresh_token', tokens.refresh_token);
-                }
-                
-                this.isAuthenticated = true;
-                document.getElementById('login-button').style.display = 'none';
-                
-                // Redirect to clean URL
-                window.location.href = window.location.origin;
-                
-            } catch (error) {
-                console.error('Authentication failed:', error);
-                this.showPopup(`Auth Failed: ${error.message}`, "ERROR");
+            const expiresIn = parseInt(hashParams.get('expires_in') || '3600');
+            const expiresAt = Date.now() + (expiresIn * 1000);
+            
+            localStorage.setItem('access_token', accessToken);
+            localStorage.setItem('expires_at', expiresAt);
+            this.isAuthenticated = true;
+            
+            // Get the original URL and pending command
+            const originalUrl = sessionStorage.getItem('preAuthUrl') || 'https://mail.google.com';
+            const pendingCommand = sessionStorage.getItem('pendingCommand');
+            
+            // Clear the stored values
+            sessionStorage.removeItem('preAuthUrl');
+            sessionStorage.removeItem('pendingCommand');
+            
+            // Redirect to original page
+            window.location.href = originalUrl;
+            
+            // If there was a pending command, execute it after a short delay
+            if (pendingCommand) {
+                setTimeout(() => {
+                    try {
+                        const command = JSON.parse(pendingCommand);
+                        this.executeEnhancedCommand(command);
+                    } catch (error) {
+                        console.error('Error executing pending command:', error);
+                    }
+                }, 1500);
             }
         }
         
@@ -1380,7 +1375,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
     }
 
-    // Initialize the application
     try {
         const assistant = new VoiceEmailAssistant();
         

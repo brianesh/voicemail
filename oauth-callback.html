@@ -1,3 +1,4 @@
+<!-- oauth-callback.html - Modified version -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -56,15 +57,18 @@
         localStorage.setItem('expires_at', Date.now() + (expiresIn * 1000));
         localStorage.setItem('token_type', tokenType);
 
+        // Get the original URL from sessionStorage
+        const originalUrl = sessionStorage.getItem('preAuthUrl') || 'https://mail.google.com';
+        
         authStatus.innerHTML = `
           <h2 class="success">Success!</h2>
-          <p>Redirecting to Gmail...</p>
+          <p>Redirecting back to application...</p>
         `;
         
-        // Redirect to Google's Add Mail Service page
+        // Redirect to original page
         setTimeout(() => {
-          window.location.href = 'https://accounts.google.com/b/0/AddMailService';
-        }, 1500);
+          window.location.href = originalUrl;
+        }, 1000);
       } else {
         authStatus.innerHTML = `
           <h2 class="error">No Token Received</h2>
@@ -81,7 +85,9 @@
       localStorage.removeItem('token_type');
       
       // Redirect to auth page
-      window.location.href = '/auth';
+      const authUrl = new URL(window.location.origin);
+      authUrl.pathname = '/auth';
+      window.location.href = authUrl.toString();
     }
   </script>
 </body>
