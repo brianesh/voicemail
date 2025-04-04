@@ -30,9 +30,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
             // OAuth Configuration - REPLACE WITH YOUR ACTUAL CREDENTIALS
             this.OAUTH_CONFIG = {
-                clientId: 'YOUR_CLIENT_ID.apps.googleusercontent.com',
-                redirectUri: window.location.origin,
-                scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
+                clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
+                clientSecret: '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',
+                redirectUri: 'http://localhost:8080/callback', // Must match exactly with your JSON
+                scope: 'https://www.googleapis.com/auth/gmail.readonly ' +
+                       'https://www.googleapis.com/auth/gmail.modify ' +
+                       'https://www.googleapis.com/auth/gmail.send',
                 authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
                 tokenUrl: 'https://oauth2.googleapis.com/token'
             };
