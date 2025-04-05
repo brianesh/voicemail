@@ -339,25 +339,58 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         // Authentication Functions
         checkAuthStatus() {
-            // Check for auth data in localStorage first, then sessionStorage
-            const authData = JSON.parse(localStorage.getItem('gmail_auth_data') || 
-                                     JSON.parse(sessionStorage.getItem('gmail_auth_data') || '{}'));
-            
-            const isExpired = authData.expires_at && (Date.now() > parseInt(authData.expires_at));
-            
-            if (authData.access_token && !isExpired) {
-                this.isAuthenticated = true;
-                document.getElementById('login-button').style.display = 'none';
-                return true;
+            try {
+                // Check for auth data in localStorage first, then sessionStorage
+                let authData = null;
+                
+                // Try to parse localStorage data
+                const localStorageData = localStorage.getItem('gmail_auth_data');
+                if (localStorageData) {
+                    try {
+                        authData = JSON.parse(localStorageData);
+                    } catch (e) {
+                        console.error('Failed to parse localStorage auth data:', e);
+                        localStorage.removeItem('gmail_auth_data');
+                    }
+                }
+                
+                // If no valid localStorage data, try sessionStorage
+                if (!authData) {
+                    const sessionStorageData = sessionStorage.getItem('gmail_auth_data');
+                    if (sessionStorageData) {
+                        try {
+                            authData = JSON.parse(sessionStorageData);
+                        } catch (e) {
+                            console.error('Failed to parse sessionStorage auth data:', e);
+                            sessionStorage.removeItem('gmail_auth_data');
+                        }
+                    }
+                }
+                
+                // Check if we have valid auth data
+                if (authData && authData.access_token) {
+                    const isExpired = authData.expires_at && (Date.now() > parseInt(authData.expires_at));
+                    
+                    if (!isExpired) {
+                        this.isAuthenticated = true;
+                        document.getElementById('login-button').style.display = 'none';
+                        return true;
+                    }
+                }
+                
+                // Clear invalid tokens if we got this far
+                localStorage.removeItem('gmail_auth_data');
+                sessionStorage.removeItem('gmail_auth_data');
+                
+                this.isAuthenticated = false;
+                document.getElementById('login-button').style.display = 'block';
+                return false;
+            } catch (error) {
+                console.error('Error in checkAuthStatus:', error);
+                this.isAuthenticated = false;
+                document.getElementById('login-button').style.display = 'block';
+                return false;
             }
-            
-            // Clear invalid tokens
-            localStorage.removeItem('gmail_auth_data');
-            sessionStorage.removeItem('gmail_auth_data');
-            
-            this.isAuthenticated = false;
-            document.getElementById('login-button').style.display = 'block';
-            return false;
         }
         
         async ensureValidToken() {
