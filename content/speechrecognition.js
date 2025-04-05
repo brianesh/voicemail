@@ -42,38 +42,39 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
             // Initialize the app
             this.initUI();
-            this.initEventListeners();
-            this.initRecognition();
-            this.checkAuthStatus();
-
-                if (window.location.hash.includes('access_token=')) {
-                    this.handleOAuthResponse();
-                } else {
-                    // Check URL params for auth success
-                    const urlParams = new URLSearchParams(window.location.search);
-                    if (urlParams.get('auth_success') === 'true') {
-                        this.isAuthenticated = this.checkAuthStatus();
-                        
-                        // Execute pending command if one exists
-                        if (urlParams.get('pending_command') === 'true') {
-                            const pendingCommand = sessionStorage.getItem('pendingCommand');
-                            if (pendingCommand) {
-                                try {
-                                    const command = JSON.parse(pendingCommand);
-                                    setTimeout(() => {
-                                        this.executeEnhancedCommand(command);
-                                    }, 1000);
-                                } catch (error) {
-                                    console.error('Error executing pending command:', error);
-                                }
-                                sessionStorage.removeItem('pendingCommand');
-                            }
-                        }
-                        
-                        // Clean up URL
-                        window.history.replaceState({}, document.title, window.location.pathname);
-                    }
+    this.initEventListeners();
+    this.initRecognition();
+    
+    // Handle OAuth response if in callback
+    if (window.location.hash.includes('access_token=')) {
+        this.handleOAuthResponse();
+    } else {
+        this.checkAuthStatus();
+    }
+    
+    // Check for pending commands after auth
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('auth_success') === 'true') {
+        this.checkAuthStatus();
+        
+        if (urlParams.get('pending_command') === 'true') {
+            const pendingCommand = sessionStorage.getItem('pendingCommand');
+            if (pendingCommand) {
+                try {
+                    const command = JSON.parse(pendingCommand);
+                    setTimeout(() => {
+                        this.executeEnhancedCommand(command);
+                    }, 1000);
+                } catch (error) {
+                    console.error('Error executing pending command:', error);
                 }
+                sessionStorage.removeItem('pendingCommand');
+            }
+        }
+        
+        // Clean up URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
             }
 
         // Initialization methods
@@ -342,25 +343,21 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         // Authentication Functions
         checkAuthStatus() {
-            // First check sessionStorage (for cross-tab auth)
-            let token = sessionStorage.getItem('gmail_access_token');
-            let expiresAt = sessionStorage.getItem('gmail_expires_at');
+            // First check localStorage for persistent auth
+            let token = localStorage.getItem('access_token');
+            let expiresAt = localStorage.getItem('expires_at');
             
-            // Fallback to localStorage
+            // Then check sessionStorage (for cross-tab auth)
             if (!token) {
-                token = localStorage.getItem('access_token');
-                expiresAt = localStorage.getItem('expires_at');
+                token = sessionStorage.getItem('gmail_access_token');
+                expiresAt = sessionStorage.getItem('gmail_expires_at');
             }
-        
+            
             const isExpired = expiresAt && (Date.now() > parseInt(expiresAt));
             
             if (token && !isExpired) {
                 this.isAuthenticated = true;
                 document.getElementById('login-button').style.display = 'none';
-                
-                // Move token to localStorage for persistence
-                localStorage.setItem('access_token', token);
-                localStorage.setItem('expires_at', expiresAt);
                 return true;
             }
             
@@ -408,6 +405,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             
             window.location.href = authUrl.toString();
         }
+
         async handleOAuthResponse() {
             const hashParams = new URLSearchParams(window.location.hash.substring(1));
             
@@ -428,31 +426,36 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const expiresIn = parseInt(hashParams.get('expires_in') || '3600');
             const expiresAt = Date.now() + (expiresIn * 1000);
             
+            // Store in both localStorage and sessionStorage
             localStorage.setItem('access_token', accessToken);
             localStorage.setItem('expires_at', expiresAt);
+            sessionStorage.setItem('gmail_access_token', accessToken);
+            sessionStorage.setItem('gmail_expires_at', expiresAt);
+            
             this.isAuthenticated = true;
+            document.getElementById('login-button').style.display = 'none';
+            
+            // Clean up the URL
+            window.history.replaceState({}, document.title, window.location.pathname);
             
             // Get the original URL and pending command
-            const originalUrl = sessionStorage.getItem('preAuthUrl') || 'https://mail.google.com/mail/u/0/?auth_success=true';
+            const originalUrl = sessionStorage.getItem('preAuthUrl') || 'https://mail.google.com/mail/u/0/';
             const pendingCommand = sessionStorage.getItem('pendingCommand');
             
             // Clear the stored values
             sessionStorage.removeItem('preAuthUrl');
             sessionStorage.removeItem('pendingCommand');
             
-            // Redirect to original page
-            window.location.href = originalUrl;
-            
             // If there was a pending command, execute it after a short delay
             if (pendingCommand) {
-                setTimeout(() => {
-                    try {
-                        const command = JSON.parse(pendingCommand);
+                try {
+                    const command = JSON.parse(pendingCommand);
+                    setTimeout(() => {
                         this.executeEnhancedCommand(command);
-                    } catch (error) {
-                        console.error('Error executing pending command:', error);
-                    }
-                }, 1500);
+                    }, 1000);
+                } catch (error) {
+                    console.error('Error executing pending command:', error);
+                }
             }
         }
         

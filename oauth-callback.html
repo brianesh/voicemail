@@ -32,9 +32,14 @@
         return;
       }
 
-      // Store token in sessionStorage (which can be accessed by the parent)
+      // Store token in both sessionStorage and localStorage
+      const expiresIn = (parseInt(hashParams.get('expires_in')) || 3600) * 1000;
+      const expiresAt = Date.now() + expiresIn;
+      
+      localStorage.setItem('access_token', accessToken);
+      localStorage.setItem('expires_at', expiresAt);
       sessionStorage.setItem('gmail_access_token', accessToken);
-      sessionStorage.setItem('gmail_expires_at', Date.now() + ((parseInt(hashParams.get('expires_in')) || 3600) * 1000));
+      sessionStorage.setItem('gmail_expires_at', expiresAt);
       
       // Close this window and notify the opener
       if (window.opener) {
