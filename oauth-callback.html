@@ -52,15 +52,18 @@
         window.close();
       } else {
         // For tabs (not popups)
-        window.location.href = buildRedirectUrl();
+        const originalUrl = sessionStorage.getItem('preAuthUrl') || 'https://mail.google.com/mail/u/0/';
+        const url = new URL(originalUrl);
+        url.searchParams.set('auth_success', 'true');
+        
+        const pendingCommand = sessionStorage.getItem('pendingCommand');
+        if (pendingCommand) {
+          url.searchParams.set('pending_command', 'true');
+        }
+        
+        window.location.href = url.toString();
       }
     });
-
-    function buildRedirectUrl() {
-      const url = new URL('https://mail.google.com/mail/u/0/');
-      url.searchParams.set('auth_success', 'true');
-      return url.toString();
-    }
 
     function showError(error, description) {
       document.getElementById('auth-status').innerHTML = `
