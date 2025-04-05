@@ -7,10 +7,24 @@
     .success { color: green; }
     .error { color: red; }
     button { padding: 8px 16px; margin-top: 10px; cursor: pointer; }
+    .loader { 
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid #3498db;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 2s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
   <div id="auth-status">
+    <div class="loader"></div>
     <h2>Processing authentication...</h2>
   </div>
 
@@ -18,47 +32,79 @@
     document.addEventListener('DOMContentLoaded', () => {
       const authStatus = document.getElementById('auth-status');
       
-      // Get hash parameters
+      // Check both hash parameters and localStorage for auth data
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const localStorageAuth = JSON.parse(localStorage.getItem('gmail_auth_data') || '{}');
       
+      // Priority order: hash params > localStorage > error
       if (hashParams.get('error')) {
         showError(hashParams.get('error'), hashParams.get('error_description'));
         return;
       }
 
-      const accessToken = hashParams.get('access_token');
+      // Try to get token from hash first
+      let accessToken = hashParams.get('access_token');
+      let expiresIn = (parseInt(hashParams.get('expires_in')) || 3600) * 1000;
+      
+      // If no hash token, check localStorage
+      if (!accessToken && localStorageAuth.access_token) {
+        accessToken = localStorageAuth.access_token;
+        expiresIn = (localStorageAuth.expires_in || 3600) * 1000;
+      }
+
       if (!accessToken) {
         showError('No access token received');
         return;
       }
 
-      // Store token in both sessionStorage and localStorage
-      const expiresIn = (parseInt(hashParams.get('expires_in')) || 3600) * 1000;
+      // Calculate expiration time
       const expiresAt = Date.now() + expiresIn;
       
-      localStorage.setItem('access_token', accessToken);
-      localStorage.setItem('expires_at', expiresAt);
-      sessionStorage.setItem('gmail_access_token', accessToken);
-      sessionStorage.setItem('gmail_expires_at', expiresAt);
+      // Store auth data in a structured way
+      const authData = {
+        access_token: accessToken,
+        expires_at: expiresAt,
+        expires_in: expiresIn / 1000,
+        received_at: Date.now()
+      };
       
-      // Close this window and notify the opener
+      // Store in localStorage (persists across sessions)
+      localStorage.setItem('gmail_auth_data', JSON.stringify(authData));
+      
+      // Also store in sessionStorage for current session
+      sessionStorage.setItem('gmail_auth_data', JSON.stringify(authData));
+      
+      // Create a unique state ID for this auth flow
+      const stateId = Math.random().toString(36).substring(2, 15);
+      localStorage.setItem('gmail_auth_state', stateId);
+      
+      // Try to communicate with opener first
       if (window.opener) {
-        window.opener.postMessage({
-          type: 'oauth_callback',
-          success: true,
-          token: accessToken,
-          expiresIn: parseInt(hashParams.get('expires_in')) || 3600
-        }, window.location.origin);
-        window.close();
+        try {
+          window.opener.postMessage({
+            type: 'oauth_callback',
+            success: true,
+            token: accessToken,
+            expiresIn: expiresIn / 1000,
+            stateId: stateId
+          }, window.location.origin);
+          
+          // Close after a short delay to ensure message is delivered
+          setTimeout(() => window.close(), 500);
+        } catch (e) {
+          // Fallback to localStorage if postMessage fails
+          window.location.href = buildRedirectUrl(stateId);
+        }
       } else {
         // For tabs (not popups)
-        window.location.href = buildRedirectUrl();
+        window.location.href = buildRedirectUrl(stateId);
       }
     });
 
-    function buildRedirectUrl() {
-      const url = new URL('https://mail.google.com/mail/u/0/');
-      url.searchParams.set('auth_success', 'true');
+    function buildRedirectUrl(stateId) {
+      const url = new URL(window.location.origin);
+      url.searchParams.set('oauth_success', 'true');
+      url.searchParams.set('state_id', stateId);
       return url.toString();
     }
 
@@ -69,6 +115,10 @@
         ${description ? `<p>${description}</p>` : ''}
         <button onclick="window.location.href='/'">Try Again</button>
       `;
+      
+      // Clear any existing auth data on error
+      localStorage.removeItem('gmail_auth_data');
+      sessionStorage.removeItem('gmail_auth_data');
     }
   </script>
 </body>

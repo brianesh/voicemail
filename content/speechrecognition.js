@@ -28,10 +28,10 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.API_TIMEOUT = 10000;
             this.pendingCommand = null;
 
-            // OAuth Configuration - Modified for implicit flow
+            // OAuth Configuration
             this.OAUTH_CONFIG = {
                 clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-                redirectUri: chrome.identity ? chrome.identity.getRedirectURL() : 'http://localhost:8080/oauth-callback',
+                redirectUri: chrome.identity ? chrome.identity.getRedirectURL() : window.location.origin + '/oauth-callback',
                 scope: [
                     'https://www.googleapis.com/auth/gmail.readonly',
                     'https://www.googleapis.com/auth/gmail.modify',
@@ -42,40 +42,15 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
             // Initialize the app
             this.initUI();
-    this.initEventListeners();
-    this.initRecognition();
-    
-    // Handle OAuth response if in callback
-    if (window.location.hash.includes('access_token=')) {
-        this.handleOAuthResponse();
-    } else {
-        this.checkAuthStatus();
-    }
-    
-    // Check for pending commands after auth
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('auth_success') === 'true') {
-        this.checkAuthStatus();
-        
-        if (urlParams.get('pending_command') === 'true') {
-            const pendingCommand = sessionStorage.getItem('pendingCommand');
-            if (pendingCommand) {
-                try {
-                    const command = JSON.parse(pendingCommand);
-                    setTimeout(() => {
-                        this.executeEnhancedCommand(command);
-                    }, 1000);
-                } catch (error) {
-                    console.error('Error executing pending command:', error);
-                }
-                sessionStorage.removeItem('pendingCommand');
-            }
+            this.initEventListeners();
+            this.initRecognition();
+            
+            // Handle OAuth response if in callback
+            this.handleOAuthResponse();
+            
+            // Check auth status on startup
+            this.checkAuthStatus();
         }
-        
-        // Clean up URL
-        window.history.replaceState({}, document.title, window.location.pathname);
-    }
-            }
 
         // Initialization methods
         initUI() {
@@ -160,6 +135,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         }
 
         initEventListeners() {
+            // Online/offline handlers
             const onlineHandler = () => {
                 this.isOnline = true;
                 this.showPopup("Connection restored", "ONLINE");
@@ -175,9 +151,29 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             window.addEventListener('online', onlineHandler);
             window.addEventListener('offline', offlineHandler);
 
+            // Message handler for OAuth callback
+            const messageHandler = (event) => {
+                if (event.origin !== window.location.origin) return;
+                if (event.data.type === 'oauth_callback' && event.data.success) {
+                    const authData = {
+                        access_token: event.data.token,
+                        expires_at: Date.now() + (event.data.expiresIn * 1000),
+                        expires_in: event.data.expiresIn,
+                        received_at: Date.now()
+                    };
+                    localStorage.setItem('gmail_auth_data', JSON.stringify(authData));
+                    sessionStorage.setItem('gmail_auth_data', JSON.stringify(authData));
+                    this.isAuthenticated = true;
+                    document.getElementById('login-button').style.display = 'none';
+                }
+            };
+
+            window.addEventListener('message', messageHandler);
+
             this.cleanupFunctions.push(() => {
                 window.removeEventListener('online', onlineHandler);
                 window.removeEventListener('offline', offlineHandler);
+                window.removeEventListener('message', messageHandler);
             });
         }
 
@@ -343,29 +339,21 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
 
         // Authentication Functions
         checkAuthStatus() {
-            // First check localStorage for persistent auth
-            let token = localStorage.getItem('access_token');
-            let expiresAt = localStorage.getItem('expires_at');
+            // Check for auth data in localStorage first, then sessionStorage
+            const authData = JSON.parse(localStorage.getItem('gmail_auth_data') || 
+                                     JSON.parse(sessionStorage.getItem('gmail_auth_data') || '{}'));
             
-            // Then check sessionStorage (for cross-tab auth)
-            if (!token) {
-                token = sessionStorage.getItem('gmail_access_token');
-                expiresAt = sessionStorage.getItem('gmail_expires_at');
-            }
+            const isExpired = authData.expires_at && (Date.now() > parseInt(authData.expires_at));
             
-            const isExpired = expiresAt && (Date.now() > parseInt(expiresAt));
-            
-            if (token && !isExpired) {
+            if (authData.access_token && !isExpired) {
                 this.isAuthenticated = true;
                 document.getElementById('login-button').style.display = 'none';
                 return true;
             }
             
             // Clear invalid tokens
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('expires_at');
-            sessionStorage.removeItem('gmail_access_token');
-            sessionStorage.removeItem('gmail_expires_at');
+            localStorage.removeItem('gmail_auth_data');
+            sessionStorage.removeItem('gmail_auth_data');
             
             this.isAuthenticated = false;
             document.getElementById('login-button').style.display = 'block';
@@ -374,12 +362,14 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
         
         async ensureValidToken() {
             if (this.checkAuthStatus()) {
-                return localStorage.getItem('access_token');
+                const authData = JSON.parse(localStorage.getItem('gmail_auth_data') || '{}');
+                return authData.access_token;
             }
             
             // Store the current command as pending
             if (this.currentCommand) {
                 this.pendingCommand = this.currentCommand;
+                sessionStorage.setItem('pendingCommand', JSON.stringify(this.currentCommand));
             }
             
             // Start auth flow and throw error to stop current operation
@@ -387,74 +377,130 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             throw new Error("Redirecting to login...");
         }
         
-        
         async startAuthFlow() {
+            // Generate a unique state parameter for security
+            const state = Math.random().toString(36).substring(2, 15) + 
+                          Math.random().toString(36).substring(2, 15);
+            
             // Store the current URL and any pending command
             sessionStorage.setItem('preAuthUrl', window.location.href);
             if (this.pendingCommand) {
                 sessionStorage.setItem('pendingCommand', JSON.stringify(this.pendingCommand));
             }
             
+            // Store the state parameter to verify later
+            localStorage.setItem('oauth_state', state);
+            
             const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
             authUrl.searchParams.append('response_type', 'token');
             authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
             authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
             authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
+            authUrl.searchParams.append('state', state);
             authUrl.searchParams.append('prompt', 'consent');
-            // Removed: authUrl.searchParams.append('access_type', 'offline');
             
-            window.location.href = authUrl.toString();
+            // For Chrome extensions
+            if (chrome.identity && chrome.identity.launchWebAuthFlow) {
+                try {
+                    const redirectUrl = await chrome.identity.launchWebAuthFlow({
+                        url: authUrl.toString(),
+                        interactive: true
+                    });
+                    
+                    if (redirectUrl) {
+                        const url = new URL(redirectUrl);
+                        const hashParams = new URLSearchParams(url.hash.substring(1));
+                        
+                        // Verify state matches
+                        if (hashParams.get('state') !== state) {
+                            throw new Error('State mismatch');
+                        }
+                        
+                        // Process the token
+                        const accessToken = hashParams.get('access_token');
+                        const expiresIn = parseInt(hashParams.get('expires_in') || '3600');
+                        
+                        if (accessToken) {
+                            const authData = {
+                                access_token: accessToken,
+                                expires_at: Date.now() + (expiresIn * 1000),
+                                expires_in: expiresIn,
+                                received_at: Date.now()
+                            };
+                            
+                            localStorage.setItem('gmail_auth_data', JSON.stringify(authData));
+                            sessionStorage.setItem('gmail_auth_data', JSON.stringify(authData));
+                            
+                            this.isAuthenticated = true;
+                            document.getElementById('login-button').style.display = 'none';
+                            
+                            // Execute any pending command
+                            const pendingCommand = sessionStorage.getItem('pendingCommand');
+                            if (pendingCommand) {
+                                try {
+                                    const command = JSON.parse(pendingCommand);
+                                    this.executeEnhancedCommand(command);
+                                } catch (error) {
+                                    console.error('Error executing pending command:', error);
+                                }
+                                sessionStorage.removeItem('pendingCommand');
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Auth flow error:', error);
+                    this.showPopup("Authentication failed", "ERROR");
+                }
+            } else {
+                // Regular web flow
+                window.location.href = authUrl.toString();
+            }
         }
 
         async handleOAuthResponse() {
-            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            // Check URL params first
+            const urlParams = new URLSearchParams(window.location.search);
+            const stateId = urlParams.get('state_id');
             
-            if (hashParams.get('error')) {
-                const error = hashParams.get('error');
-                console.error('OAuth Error:', error);
-                this.showPopup(`Auth Error: ${error}`, "ERROR");
-                return;
-            }
-            
-            const accessToken = hashParams.get('access_token');
-            if (!accessToken) {
-                console.error('Missing access token');
-                this.showPopup("Missing access token", "ERROR");
-                return;
-            }
-            
-            const expiresIn = parseInt(hashParams.get('expires_in') || '3600');
-            const expiresAt = Date.now() + (expiresIn * 1000);
-            
-            // Store in both localStorage and sessionStorage
-            localStorage.setItem('access_token', accessToken);
-            localStorage.setItem('expires_at', expiresAt);
-            sessionStorage.setItem('gmail_access_token', accessToken);
-            sessionStorage.setItem('gmail_expires_at', expiresAt);
-            
-            this.isAuthenticated = true;
-            document.getElementById('login-button').style.display = 'none';
-            
-            // Clean up the URL
-            window.history.replaceState({}, document.title, window.location.pathname);
-            
-            // Get the original URL and pending command
-            const originalUrl = sessionStorage.getItem('preAuthUrl') || 'https://mail.google.com/mail/u/0/';
-            const pendingCommand = sessionStorage.getItem('pendingCommand');
-            
-            // Clear the stored values
-            sessionStorage.removeItem('preAuthUrl');
-            sessionStorage.removeItem('pendingCommand');
-            
-            // If there was a pending command, execute it after a short delay
-            if (pendingCommand) {
-                try {
-                    const command = JSON.parse(pendingCommand);
-                    setTimeout(() => {
-                        this.executeEnhancedCommand(command);
-                    }, 1000);
-                } catch (error) {
-                    console.error('Error executing pending command:', error);
+            if (urlParams.get('oauth_success') === 'true' && stateId) {
+                // Verify state ID matches what we stored
+                const storedStateId = localStorage.getItem('gmail_auth_state');
+                
+                if (stateId !== storedStateId) {
+                    console.error('State ID mismatch');
+                    this.showPopup("Authentication failed", "ERROR");
+                    return;
+                }
+                
+                // Clear the state ID after verification
+                localStorage.removeItem('gmail_auth_state');
+                
+                // Check for auth data in localStorage
+                const authData = JSON.parse(localStorage.getItem('gmail_auth_data') || '{}');
+                
+                if (!authData.access_token) {
+                    this.showPopup("Authentication failed", "ERROR");
+                    return;
+                }
+                
+                this.isAuthenticated = true;
+                document.getElementById('login-button').style.display = 'none';
+                
+                // Clean up the URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+                
+                // Handle any pending command
+                const pendingCommand = sessionStorage.getItem('pendingCommand');
+                if (pendingCommand) {
+                    try {
+                        const command = JSON.parse(pendingCommand);
+                        setTimeout(() => {
+                            this.executeEnhancedCommand(command);
+                        }, 1000);
+                    } catch (error) {
+                        console.error('Error executing pending command:', error);
+                    }
+                    sessionStorage.removeItem('pendingCommand');
                 }
             }
         }
