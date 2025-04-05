@@ -5,7 +5,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
     console.error("Speech Synthesis not supported in this browser.");
     alert("Your browser doesn't support speech synthesis. Please use Chrome or Edge.");
 } else {
-    // Main application class
     class VoiceEmailAssistant {
         constructor() {
             this.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -27,17 +26,19 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.API_RATE_LIMIT = 5;
             this.API_TIMEOUT = 10000;
             this.pendingCommand = null;
+            this.authWindow = null;
+            this.authCheckInterval = null;
 
-            // OAuth Configuration - Modified for implicit flow
+            // OAuth Configuration
             this.OAUTH_CONFIG = {
                 clientId: '629991621617-u5vp7bh2dm1vd36u2laeppdjt74uc56h.apps.googleusercontent.com',
-                redirectUri: 'http://localhost:8080/oauth-callback',
                 scope: [
                     'https://www.googleapis.com/auth/gmail.readonly',
                     'https://www.googleapis.com/auth/gmail.modify',
                     'https://www.googleapis.com/auth/gmail.send'
                 ].join(' '),
                 authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+                redirectUri: window.location.origin
             };
 
             // Initialize the app
@@ -46,36 +47,12 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.initRecognition();
             this.checkAuthStatus();
 
+            // Handle token from URL hash if present
             if (window.location.hash.includes('access_token=')) {
-                this.handleOAuthResponse();
-            } else {
-                // Check URL params for auth success
-                const urlParams = new URLSearchParams(window.location.search);
-                if (urlParams.get('auth_success') === 'true') {
-                    this.isAuthenticated = true;
-                    document.getElementById('login-button').style.display = 'none';
-                    
-                    // Execute pending command if one exists
-                    if (urlParams.get('pending_command') === 'true') {
-                        const pendingCommand = sessionStorage.getItem('pendingCommand');
-                        if (pendingCommand) {
-                            try {
-                                const command = JSON.parse(pendingCommand);
-                                setTimeout(() => {
-                                    this.executeEnhancedCommand(command);
-                                }, 1000);
-                            } catch (error) {
-                                console.error('Error executing pending command:', error);
-                            }
-                            sessionStorage.removeItem('pendingCommand');
-                        }
-                    }
-                    
-                    // Clean up URL
-                    window.history.replaceState({}, document.title, window.location.pathname);
-            }}}
+                this.handleTokenResponse();
+            }
+        }
 
-        // Initialization methods
         initUI() {
             if (!document.getElementById('speech-popup')) {
                 this.popup = document.createElement("div");
@@ -261,7 +238,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.recognition.start();
         }
 
-        // UI Functions
         showPopup(message, status) {
             this.popup.innerHTML = `<b>Status:</b> ${status} <br> <b>You said:</b> ${message}`;
             this.popup.style.display = "block";
@@ -291,7 +267,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             this.commandHistory.style.display = "block";
         }
 
-        // Speech Functions
         processQueue() {
             if (this.speechQueue.length === 0 || this.isSpeaking) return;
             
@@ -321,7 +296,6 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             }
         }
 
-        // Email Detection
         containsEmail(text) {
             const emailPattern = /\b\w+(?:\s*(?:at|and)\s*\w+(?:\s*(?:dot|doht|dought)\s*(?:com|org|net|edu|gov|co|in|io)\b))/gi;
             const match = text.match(emailPattern);
@@ -339,141 +313,138 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             return null;
         }
 
-        // Authentication Functions
         checkAuthStatus() {
-            // First check URL params for auth success
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('auth_success') === 'true') {
-                this.isAuthenticated = true;
-                document.getElementById('login-button').style.display = 'none';
-                window.history.replaceState({}, document.title, window.location.pathname);
-                return true;
-            }
-        
-            // Rest of existing checks...
-            let token = sessionStorage.getItem('gmail_access_token');
-            let expiresAt = sessionStorage.getItem('gmail_expires_at');
+            const token = localStorage.getItem('access_token');
+            const expiresAt = localStorage.getItem('expires_at');
             
-            // Fallback to localStorage
-            if (!token) {
-                token = localStorage.getItem('access_token');
-                expiresAt = localStorage.getItem('expires_at');
-            }
-        
-            const isExpired = expiresAt && (Date.now() > parseInt(expiresAt));
-            
-            if (token && !isExpired) {
+            if (token && expiresAt && Date.now() < parseInt(expiresAt)) {
                 this.isAuthenticated = true;
                 document.getElementById('login-button').style.display = 'none';
                 return true;
             }
             
-            // Clear invalid tokens
             localStorage.removeItem('access_token');
             localStorage.removeItem('expires_at');
-            sessionStorage.removeItem('gmail_access_token');
-            sessionStorage.removeItem('gmail_expires_at');
-            
             this.isAuthenticated = false;
             document.getElementById('login-button').style.display = 'block';
             return false;
         }
 
-        // Add new method for building Gmail URLs
-buildGmailUrl(section = 'inbox') {
-    const sections = {
-        'compose': '#inbox?compose=new',
-        'inbox': '#inbox',
-        'sent': '#sent',
-        'drafts': '#drafts',
-        'starred': '#starred',
-        'snoozed': '#snoozed',
-        'spam': '#spam',
-        'trash': '#trash',
-        'all mail': '#all',
-        'important': '#important'
-    };
-    
-    const url = new URL('https://mail.google.com/mail/u/0/' + (sections[section] || ''));
-    if (this.isAuthenticated) {
-        url.searchParams.set('auth_success', 'true');
-    }
-    return url.toString();
-}
-        
-        async ensureValidToken() {
-            if (this.checkAuthStatus()) {
-                return localStorage.getItem('access_token');
-            }
-            
-            // Store the current command as pending
-            if (this.currentCommand) {
-                this.pendingCommand = this.currentCommand;
-            }
-            
-            // Start auth flow and throw error to stop current operation
-            this.startAuthFlow();
-            throw new Error("Redirecting to login...");
-        }
-        
-        
-        async startAuthFlow() {
-            // Store the current URL and any pending command
-            sessionStorage.setItem('preAuthUrl', window.location.href);
-            if (this.pendingCommand) {
-                sessionStorage.setItem('pendingCommand', JSON.stringify(this.pendingCommand));
-            }
-            
-            const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
-            authUrl.searchParams.append('response_type', 'token');
-            authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
-            authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
-            authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
-            authUrl.searchParams.append('prompt', 'consent');
-            // Removed: authUrl.searchParams.append('access_type', 'offline');
-            
-            window.location.href = authUrl.toString();
-        }
-        async handleOAuthResponse() {
+        handleTokenResponse() {
             const hashParams = new URLSearchParams(window.location.hash.substring(1));
             
             if (hashParams.get('error')) {
                 const error = hashParams.get('error');
                 console.error('OAuth Error:', error);
                 this.showPopup(`Auth Error: ${error}`, "ERROR");
+                this.speak("Login failed. Please try again.");
                 return;
             }
-            
+
             const accessToken = hashParams.get('access_token');
             if (!accessToken) {
                 console.error('Missing access token');
                 this.showPopup("Missing access token", "ERROR");
+                this.speak("Login failed. No access token received.");
                 return;
             }
-            
-            const expiresIn = parseInt(hashParams.get('expires_in') || '3600');
-            const expiresAt = Date.now() + (expiresIn * 1000);
+
+            const expiresIn = (parseInt(hashParams.get('expires_in')) || 3600) * 1000;
+            const expiresAt = Date.now() + expiresIn;
             
             localStorage.setItem('access_token', accessToken);
             localStorage.setItem('expires_at', expiresAt);
             this.isAuthenticated = true;
+            document.getElementById('login-button').style.display = 'none';
             
-            // Get the original URL and pending command
-            const originalUrl = sessionStorage.getItem('preAuthUrl') || 'https://mail.google.com/mail/u/0/';
-            const url = new URL(originalUrl);
-            url.searchParams.set('auth_success', 'true');
+            window.history.replaceState({}, document.title, window.location.pathname);
             
-            const pendingCommand = sessionStorage.getItem('pendingCommand');
-            if (pendingCommand) {
-                url.searchParams.set('pending_command', 'true');
+            this.showPopup("Successfully authenticated", "SUCCESS");
+            this.speak("You are now logged in");
+        }
+
+        async ensureValidToken() {
+            if (this.checkAuthStatus()) {
+                return localStorage.getItem('access_token');
             }
             
-            // Clear the stored values
-            sessionStorage.removeItem('preAuthUrl');
-            sessionStorage.removeItem('pendingCommand');
+            await this.startAuthFlow();
+            throw new Error("Authentication required");
+        }
+
+        async startAuthFlow() {
+            const authUrl = new URL(this.OAUTH_CONFIG.authUrl);
+            authUrl.searchParams.append('response_type', 'token');
+            authUrl.searchParams.append('client_id', this.OAUTH_CONFIG.clientId);
+            authUrl.searchParams.append('redirect_uri', this.OAUTH_CONFIG.redirectUri);
+            authUrl.searchParams.append('scope', this.OAUTH_CONFIG.scope);
+            authUrl.searchParams.append('prompt', 'consent');
             
-            // Redirect to original page
-            window.location.href = url.toString();
+            const width = 500;
+            const height = 600;
+            const left = (screen.width - width) / 2;
+            const top = (screen.height - height) / 2;
+
+            this.authWindow = window.open(
+                authUrl.toString(),
+                'google_auth',
+                `width=${width},height=${height},top=${top},left=${left}`
+            );
+
+            if (!this.authWindow) {
+                this.showPopup("Please allow popups to login", "ERROR");
+                this.speak("Please enable popups to complete login");
+                return;
+            }
+
+            this.authCheckInterval = setInterval(() => {
+                try {
+                    if (this.authWindow.closed) {
+                        clearInterval(this.authCheckInterval);
+                        this.authCheckInterval = null;
+                        
+                        if (!this.isAuthenticated) {
+                            this.showPopup("Login window closed", "INFO");
+                            this.speak("Login was not completed");
+                        }
+                    }
+                    
+                    if (this.authWindow.location.href.startsWith(window.location.origin)) {
+                        clearInterval(this.authCheckInterval);
+                        this.authCheckInterval = null;
+                        this.authWindow.close();
+                    }
+                } catch (e) {
+                    // Cross-origin errors are expected until redirect back
+                }
+            }, 500);
+
+            setTimeout(() => {
+                if (this.authCheckInterval) {
+                    clearInterval(this.authCheckInterval);
+                    this.authCheckInterval = null;
+                }
+                if (this.authWindow && !this.authWindow.closed) {
+                    this.authWindow.close();
+                }
+            }, 5 * 60 * 1000);
+        }
+
+        buildGmailUrl(section = 'inbox') {
+            const sections = {
+                'compose': '#inbox?compose=new',
+                'inbox': '#inbox',
+                'sent': '#sent',
+                'drafts': '#drafts',
+                'starred': '#starred',
+                'snoozed': '#snoozed',
+                'spam': '#spam',
+                'trash': '#trash',
+                'all mail': '#all',
+                'important': '#important'
+            };
+            
+            return 'https://mail.google.com/mail/u/0/' + (sections[section] || '');
         }
         
         // Network and API Functions
@@ -1383,8 +1354,14 @@ buildGmailUrl(section = 'inbox') {
             this.addToHistory(transcript, "Command not recognized");
         }
 
-        // Cleanup
         cleanup() {
+            if (this.authCheckInterval) {
+                clearInterval(this.authCheckInterval);
+            }
+            if (this.authWindow && !this.authWindow.closed) {
+                this.authWindow.close();
+            }
+
             this.cleanupFunctions.forEach(fn => fn());
             window.speechSynthesis.cancel();
             if (this.recognition) this.recognition.abort();
@@ -1397,20 +1374,9 @@ buildGmailUrl(section = 'inbox') {
 
     try {
         const assistant = new VoiceEmailAssistant();
-        
-        // Cleanup on page unload
         window.addEventListener('beforeunload', () => assistant.cleanup());
     } catch (error) {
         console.error("Failed to initialize voice email assistant:", error);
         alert("Failed to initialize voice email assistant. Please check the console for details.");
     }
-    // At the end of the file
-if (window.location.hostname === 'mail.google.com') {
-    try {
-        const assistant = new VoiceEmailAssistant();
-        window.addEventListener('beforeunload', () => assistant.cleanup());
-    } catch (error) {
-        console.error("Failed to initialize voice email assistant:", error);
-    }
-}
 }
