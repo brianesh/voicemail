@@ -1294,7 +1294,7 @@ if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) 
             const simpleCommands = {
                 "compose": ["compose", "new email", "write email"],
                 "inbox": ["inbox", "open inbox", "check inbox"],
-                "sent": ["sent mail", "sent", "send", "sent messages"],
+                "sent": ["sent mail", "sent", "delivered", "sent messages"],
                 "drafts": ["drafts", "saved emails"],
                 "starred": ["starred", "important emails"],
                 "snoozed": ["snoozed", "snooze emails"],
